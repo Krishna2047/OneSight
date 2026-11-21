@@ -4,16 +4,22 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__))))
 
 import unittest
 from unittest.mock import patch, MagicMock
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from app.core.database import Base
 from app.services.aws_live_service import AWSLiveCostExplorerService
 from app.api.billing import get_aws_onboarding_template, onboard_sts_role, AWSOnboardSTSRequest
-from app.core.database import SessionLocal
 
 class TestSTSOnboarding(unittest.TestCase):
     def setUp(self):
-        self.db = SessionLocal()
+        self.test_engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(bind=self.test_engine)
+        TestSession = sessionmaker(bind=self.test_engine)
+        self.db = TestSession()
 
     def tearDown(self):
         self.db.close()
+        Base.metadata.drop_all(bind=self.test_engine)
 
     def test_cft_template_generation(self):
         """Verify 1-Click CloudFormation template and parameters."""
@@ -37,6 +43,10 @@ class TestSTSOnboarding(unittest.TestCase):
     @patch("boto3.Session")
     def test_verify_and_onboard_sts_role(self, mock_session_cls, mock_sync):
         """Verify STS assume role and organization discovery flow."""
+        from app.models.tenant import Tenant
+        self.db.add(Tenant(id="tenant-acme", name="Acme Test Org", slug="acme-test", plan="ENTERPRISE"))
+        self.db.commit()
+
         mock_sync.return_value = {"success": True, "records_synced": 42}
         mock_session_instance = MagicMock()
         mock_session_cls.return_value = mock_session_instance

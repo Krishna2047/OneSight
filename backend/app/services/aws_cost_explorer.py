@@ -63,7 +63,7 @@ class AWSCostExplorerService:
         # Simulated prior month comparison (e.g. 8.4% lower baseline)
         prior_month_spend = round(forecast_30d * 0.916, 2)
         variance_amount = round(forecast_30d - prior_month_spend, 2)
-        variance_pct = round(((forecast_30d - prior_month_spend) / prior_month_spend) * 100.0, 1)
+        variance_pct = round(((forecast_30d - prior_month_spend) / prior_month_spend) * 100.0, 1) if prior_month_spend > 0 else 0.0
 
         return {
             "total_spend": round(total_spend, 2),
