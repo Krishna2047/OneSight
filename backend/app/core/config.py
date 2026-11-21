@@ -2,11 +2,14 @@ import os
 from typing import List, Optional
 from pydantic_settings import BaseSettings
 
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_DEFAULT_DB_PATH = os.path.join(_BASE_DIR, "onesight.db").replace("\\", "/")
+
 class Settings(BaseSettings):
     PROJECT_NAME: str = "OneSight"
     PROJECT_DESCRIPTION: str = "Cloud Billing Alert System & Agentic AI FinOps Platform"
     API_V1_STR: str = "/api/v1"
-    DATABASE_URL: str = "sqlite:///./onesight.db"
+    DATABASE_URL: str = f"sqlite:///{_DEFAULT_DB_PATH}"
     
     # Cloud Simulation / Mock Mode
     MOCK_CLOUD_ENABLED: bool = True
