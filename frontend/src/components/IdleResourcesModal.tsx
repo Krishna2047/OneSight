@@ -14,6 +14,8 @@ import {
   DollarSign,
   AlertCircle,
   RefreshCw,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 
 interface IdleResourcesModalProps {
@@ -59,127 +61,119 @@ export function IdleResourcesModal({
 
   return (
     <div className="space-y-6">
-      {/* Overview Banner */}
-      <div className="p-6 rounded-2xl bg-gradient-to-r from-rose-950/40 via-slate-900 to-slate-900 border border-rose-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center space-x-2">
-            <Trash2 className="w-5 h-5 text-rose-400" />
-            <h3 className="text-base font-bold text-white">Idle & Orphaned Cloud Asset Auditor</h3>
+      {/* Overview Banner Card */}
+      <div className="bg-white border border-slate-200/90 shadow-sm rounded-2xl p-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center space-x-3.5">
+            <div className="w-12 h-12 rounded-xl bg-rose-50 flex items-center justify-center text-rose-600 shrink-0">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Idle & Orphaned Cloud Asset Auditor</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Continuously detects unattached EBS volumes, idle NAT Gateways, and abandoned Elastic IPs to recover cloud spend
+              </p>
+            </div>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
-            Detects unattached volumes, idle VPC NAT Gateways, and abandoned IPs to recover cloud spend.
-          </p>
+
+          {/* Waste Totals */}
+          <div className="flex items-center space-x-3">
+            <div className="bg-rose-50 border border-rose-200/80 px-4 py-2.5 rounded-xl text-right">
+              <span className="text-[10px] font-semibold text-rose-700 block uppercase tracking-wider">Total Monthly Waste</span>
+              <span className="text-lg font-bold font-mono text-rose-700">
+                ${totalMonthlyWaste.toLocaleString(undefined, { minimumFractionDigits: 2 })}/mo
+              </span>
+            </div>
+            <div className="bg-emerald-50 border border-emerald-200/80 px-4 py-2.5 rounded-xl text-right">
+              <span className="text-[10px] font-semibold text-emerald-700 block uppercase tracking-wider">Annualized Savings</span>
+              <span className="text-lg font-bold font-mono text-emerald-700">
+                ${(totalMonthlyWaste * 12).toLocaleString(undefined, { minimumFractionDigits: 2 })}/yr
+              </span>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center space-x-4 bg-slate-800/80 px-4 py-2.5 rounded-xl border border-slate-700">
-          <div>
-            <span className="text-[10px] text-slate-400 block">Total Monthly Waste</span>
-            <span className="text-lg font-bold text-rose-400">
-              ${totalMonthlyWaste.toLocaleString(undefined, { minimumFractionDigits: 2 })}/mo
-            </span>
+        {remediationMsg && (
+          <div className="mt-4 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="font-semibold">{remediationMsg}</span>
           </div>
-          <div className="h-8 w-px bg-slate-700" />
-          <div>
-            <span className="text-[10px] text-slate-400 block">Annualized Potential Savings</span>
-            <span className="text-lg font-bold text-emerald-400">
-              ${(totalMonthlyWaste * 12).toLocaleString(undefined, { minimumFractionDigits: 2 })}/yr
-            </span>
-          </div>
-        </div>
+        )}
       </div>
 
-      {remediationMsg && (
-        <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-xs text-emerald-300 flex items-center space-x-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>{remediationMsg}</span>
-        </div>
-      )}
-
-      {/* Resource Table / Grid */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden backdrop-blur">
-        <div className="divide-y divide-slate-800/80">
-          {resources.map((item) => {
-            const Icon = getResourceIcon(item.resource_type);
-            const isRemediated = item.status === "REMEDIATED";
+      {/* Idle Resources List */}
+      <div className="space-y-3.5">
+        {resources.length === 0 ? (
+          <div className="p-12 text-center bg-white border border-slate-200/90 rounded-2xl shadow-sm">
+            <ShieldCheck className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
+            <h4 className="text-base font-bold text-slate-900">Zero Idle Cloud Waste Identified</h4>
+            <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+              All EBS storage volumes, NAT Gateways, and Elastic IPs are attached, actively routing production traffic, and properly tagged.
+            </p>
+          </div>
+        ) : (
+          resources.map((res) => {
+            const Icon = getResourceIcon(res.resource_type);
+            const isRemediating = remediatingId === res.resource_id;
 
             return (
               <div
-                key={item.id}
-                className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-800/30 transition-colors"
+                key={res.id}
+                className="bg-white border border-slate-200/90 hover:border-indigo-300 rounded-2xl p-5 shadow-sm hover:shadow transition-all"
               >
-                <div className="flex items-start space-x-3.5">
-                  <div
-                    className={`p-2.5 rounded-xl border shrink-0 ${
-                      isRemediated
-                        ? "bg-slate-800 text-slate-500 border-slate-700"
-                        : "bg-rose-500/10 text-rose-400 border-rose-500/20"
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xs font-bold text-white px-2 py-0.5 rounded bg-slate-800">
-                        {item.provider}
-                      </span>
-                      <h4 className="text-sm font-semibold text-slate-200">
-                        {item.resource_name}
-                      </h4>
-                      <span className="text-xs text-slate-400 font-mono">
-                        ({item.resource_type})
-                      </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  {/* Left: Resource Info */}
+                  <div className="flex items-start space-x-3.5">
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700 shrink-0 mt-0.5">
+                      <Icon className="w-5 h-5" />
                     </div>
 
-                    <p className="text-xs text-slate-400 font-mono">
-                      ID: <span className="text-slate-300">{item.resource_id}</span> • Region:{" "}
-                      <span className="text-slate-300">{item.region}</span>
-                    </p>
-
-                    {item.details && (
-                      <div className="flex items-center space-x-2 text-[11px] text-slate-500 pt-1">
-                        {Object.entries(item.details).map(([k, v], idx) => (
-                          <span key={idx} className="bg-slate-800/60 px-2 py-0.5 rounded">
-                            {k}: <strong className="text-slate-300">{String(v)}</strong>
-                          </span>
-                        ))}
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          {res.provider}
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-900">{res.resource_name}</h4>
+                        <span className="text-xs text-slate-500">({res.resource_type})</span>
                       </div>
-                    )}
-                  </div>
-                </div>
 
-                <div className="flex items-center space-x-4 shrink-0">
-                  <div className="text-right">
-                    <span className="text-sm font-bold text-rose-400 block">
-                      ${item.monthly_waste_cost.toFixed(2)}/mo
-                    </span>
-                    <span className="text-[10px] text-slate-500">Incurring Unused Cost</span>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 pt-1">
+                        <span className="font-mono bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px]">
+                          ID: {res.resource_id}
+                        </span>
+                        <span>•</span>
+                        <span>Region: {res.region}</span>
+                        <span>•</span>
+                        <span className="font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full text-[11px]">
+                          Idle for {res.details?.unattached_days || res.details?.idle_days || 14} days
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
-                  {isRemediated ? (
-                    <span className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold flex items-center space-x-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Remediated</span>
-                    </span>
-                  ) : (
+                  {/* Right: Waste Cost & Remediation CTA */}
+                  <div className="flex items-center justify-between sm:justify-end space-x-4 border-t sm:border-t-0 pt-3 sm:pt-0 border-slate-100 shrink-0">
+                    <div className="text-right">
+                      <div className="text-lg font-bold font-mono text-rose-600">
+                        ${res.monthly_waste_cost.toFixed(2)}
+                        <span className="text-xs font-normal text-slate-400">/mo</span>
+                      </div>
+                    </div>
+
                     <button
-                      onClick={() => handleRemediate(item)}
-                      disabled={remediatingId === item.resource_id}
-                      className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center space-x-1.5 transition-colors shadow-sm"
+                      onClick={() => handleRemediate(res)}
+                      disabled={isRemediating}
+                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center space-x-1.5 transition-all shadow-sm disabled:opacity-50"
                     >
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>
-                        {remediatingId === item.resource_id
-                          ? "Executing..."
-                          : "Auto-Remediate"}
-                      </span>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>{isRemediating ? "Remediating..." : "Auto-Remediate"}</span>
                     </button>
-                  )}
+                  </div>
                 </div>
               </div>
             );
-          })}
-        </div>
+          })
+        )}
       </div>
     </div>
   );
