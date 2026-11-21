@@ -1,6 +1,26 @@
 version: '3.8'
 
 services:
+  # 1. PostgreSQL Production Database
+  db:
+    image: postgres:16-alpine
+    container_name: onesight-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: onesight
+      POSTGRES_PASSWORD: onesight_password
+      POSTGRES_DB: onesight
+    ports:
+      - "5432:5432"
+    volumes:
+      - onesight_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onesight -d onesight"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. OneSight Backend (FastAPI + Boto3 Cost Explorer Engine)
   backend:
     build:
       context: ./backend
@@ -9,12 +29,17 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=sqlite:///./onesight.db
-      - MOCK_CLOUD_ENABLED=True
-    volumes:
-      - onesight_data:/app/data
+      - DATABASE_URL=postgresql://onesight:onesight_password@db:5432/onesight
+      - MOCK_CLOUD_ENABLED=False
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
+  # 3. OneSight Frontend (Next.js 14)
   frontend:
     build:
       context: ./frontend
@@ -29,4 +54,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  onesight_data:
+  onesight_pgdata:
