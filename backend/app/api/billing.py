@@ -1,7 +1,7 @@
 from typing import Dict, Any, List, Optional
 import os
 from pydantic import BaseModel
-from fastapi import APIRouter, Depends, Query, Header, HTTPException
+from fastapi import APIRouter, Depends, Query, Header, HTTPException, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.core.database import get_db
@@ -402,6 +402,20 @@ def get_aws_onboarding_template(
     unique tenant External ID, master SaaS account ID, and quick-launch URL.
     """
     return AWSLiveCostExplorerService.generate_cft_template(tenant_id)
+
+@router.get("/aws/cft-download")
+def download_cft_template(
+    tenant_id: str = Depends(get_tenant_id)
+):
+    """
+    Downloads personalized onesight-cft.yaml file with tenant External ID.
+    """
+    data = AWSLiveCostExplorerService.generate_cft_template(tenant_id)
+    return Response(
+        content=data["cloudformation_yaml"],
+        media_type="text/yaml",
+        headers={"Content-Disposition": 'attachment; filename="onesight-cft.yaml"'}
+    )
 
 @router.post("/aws/onboard-sts-role")
 def onboard_sts_role(

@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'OneSight FinOps Cross-Account STS AssumeRole with Cost Explorer and AWS Organizations Read-Only Access'
+
+Parameters:
+  OneSightAccountId:
+    Type: String
+    Default: '123456789012'
+    Description: 'The AWS Account ID of the OneSight SaaS platform.'
+  ExternalId:
+    Type: String
+    Default: 'onesight-acme-finops-auth'
+    Description: 'Unique tenant External ID preventing the Confused Deputy problem.'
+
+Resources:
+  OneSightCostOptimizerRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: 'OneSightCostOptimizerRole'
+      Description: 'Allows OneSight Agentic AI & Cost Explorer to read AWS billing & organization topology'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam://${OneSightAccountId}:root'
+            Action: 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                'sts:ExternalId': !Ref ExternalId
+      Policies:
+        - PolicyName: 'OneSightCostExplorerReadOnly'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ce:GetCostAndUsage'
+                  - 'ce:GetCostForecast'
+                  - 'ce:GetDimensionValues'
+                  - 'ce:GetAnomalies'
+                  - 'organizations:ListAccounts'
+                  - 'organizations:DescribeOrganization'
+                  - 'sts:GetCallerIdentity'
+                Resource: '*'
+
+Outputs:
+  RoleArn:
+    Description: 'Copy this Role ARN back to OneSight to finish 1-click onboarding'
+    Value: !GetAtt OneSightCostOptimizerRole.Arn
+  ExternalId:
+    Description: 'Configured External ID'
+    Value: !Ref ExternalId
