@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "OneSight — Cloud Billing Alert System & Agentic AI FinOps Platform",
+  title: "Costimizer — Cost Optimization Dashboard & AI FinOps Platform",
   description:
-    "Enterprise Multi-Cloud Billing Observability, Real-Time Spike Anomaly Detection, and Autonomous Agentic AI Root Cause Analysis (AWS, GCP, Azure).",
+    "Efficiently track, optimize, and manage your cloud resources in one unified platform.",
 };
 
 export default function RootLayout({
@@ -13,8 +13,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="min-h-screen bg-[#090d16] text-slate-100 antialiased selection:bg-indigo-500 selection:text-white">
+    <html lang="en">
+      <body className="min-h-screen bg-[#F4F6FA] text-slate-900 font-sans antialiased selection:bg-indigo-500 selection:text-white">
         {children}
       </body>
     </html>

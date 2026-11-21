@@ -39,12 +39,12 @@ export function Sidebar({ activeTab, setActiveTab, anomalyCount }: SidebarProps)
       {/* Brand Logo Header */}
       <div className="h-16 flex items-center px-6 border-b border-slate-100">
         <div className="flex items-center space-x-2.5">
-          <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-sm shadow-indigo-600/30">
+          <div className="w-8 h-8 rounded-xl bg-[#3B49DF] flex items-center justify-center text-white shadow-xs">
             <Cloud className="w-4 h-4 fill-white text-white" />
           </div>
           <div>
-            <span className="text-base font-bold text-slate-900 tracking-tight">OneSight</span>
-            <span className="text-[10px] text-indigo-600 font-semibold block leading-none">FinOps Cloud</span>
+            <span className="text-base font-extrabold text-slate-900 tracking-tight font-sans">Costimizer</span>
+            <span className="text-[10px] text-indigo-600 font-semibold block leading-none">OneSight FinOps</span>
           </div>
         </div>
       </div>
