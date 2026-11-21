@@ -27,6 +27,7 @@ import {
   Calendar,
   Sparkles,
   PieChart,
+  Shield,
 } from "lucide-react";
 
 interface AWSCostExplorerProps {
@@ -143,11 +144,11 @@ export function AWSCostExplorer({
             {onConnectRealAWS && (
               <button
                 onClick={onConnectRealAWS}
-                className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-300 text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-colors"
-                title="Connect Real AWS Credentials"
+                className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-colors"
+                title="1-Click AWS STS Account Onboarding"
               >
-                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                <span>Live AWS API</span>
+                <Shield className="w-3.5 h-3.5 text-indigo-600" />
+                <span>1-Click AWS Onboarding</span>
               </button>
             )}
 

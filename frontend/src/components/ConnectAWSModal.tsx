@@ -16,6 +16,12 @@ import {
   Copy,
   Check,
   Lock,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  Terminal,
+  Building2,
+  Cpu,
 } from "lucide-react";
 
 interface ConnectAWSModalProps {
@@ -31,36 +37,120 @@ export function ConnectAWSModal({
   onSuccess,
   tenantId,
 }: ConnectAWSModalProps) {
+  const [activeMode, setActiveMode] = useState<"sts" | "keys">("sts");
+
+  // STS 1-Click State
+  const [cftData, setCftData] = useState<{
+    onesight_account_id: string;
+    external_id: string;
+    role_name: string;
+    cloudformation_yaml: string;
+    quick_create_url: string;
+    cli_command: string;
+    terraform_hcl: string;
+  } | null>(null);
+
+  const [stsRoleArn, setStsRoleArn] = useState("");
+  const [targetAccountId, setTargetAccountId] = useState("");
+  const [activeCodeTab, setActiveCodeTab] = useState<"cft" | "cli" | "tf">("cft");
+  const [showCodeDetails, setShowCodeDetails] = useState(false);
+
+  // Direct IAM Keys State
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
   const [sessionToken, setSessionToken] = useState("");
   const [region, setRegion] = useState("us-east-1");
   const [roleArn, setRoleArn] = useState("");
-  const [days, setDays] = useState(30);
 
+  const [days, setDays] = useState(30);
   const [isLoading, setIsLoading] = useState(false);
   const [liveStatus, setLiveStatus] = useState<any>(null);
-  const [resultMsg, setResultMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [copiedPolicy, setCopiedPolicy] = useState(false);
+  const [resultMsg, setResultMsg] = useState<{
+    type: "success" | "error";
+    text: string;
+    discovered?: any[];
+  } | null>(null);
+
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      checkStatus();
+      loadInitialData();
     }
   }, [isOpen, tenantId]);
 
-  const checkStatus = async () => {
+  const loadInitialData = async () => {
     try {
-      const res = await api.getAWSLiveStatus(tenantId);
-      setLiveStatus(res);
+      const [statusRes, templateRes] = await Promise.all([
+        api.getAWSLiveStatus(tenantId),
+        api.getAWSOnboardingTemplate(tenantId),
+      ]);
+      setLiveStatus(statusRes);
+      setCftData(templateRes);
     } catch (e) {
-      console.error(e);
+      console.error("Error loading onboarding data:", e);
     }
+  };
+
+  const copyToClipboard = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
   };
 
   if (!isOpen) return null;
 
-  const handleConnect = async (e: React.FormEvent) => {
+  // Handle STS 1-Click Role Onboarding
+  const handleOnboardSTS = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalRoleArn = stsRoleArn.trim() || (targetAccountId.trim() ? `arn:aws:iam::${targetAccountId.trim()}:role/OneSightCostOptimizerRole` : "");
+
+    if (!finalRoleArn) {
+      setResultMsg({
+        type: "error",
+        text: "Please provide the Role ARN (e.g. arn:aws:iam::123456789012:role/OneSightCostOptimizerRole) or enter your 12-digit AWS Account ID.",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    setResultMsg(null);
+
+    try {
+      const res = await api.onboardSTSRole(tenantId, {
+        role_arn: finalRoleArn,
+        external_id: cftData?.external_id || `onesight-${tenantId}-finops-auth`,
+        sync_immediately: true,
+        days: days,
+      });
+
+      if (res.success) {
+        setResultMsg({
+          type: "success",
+          text: `Onboarded AWS Account ${res.account_id}! Discovered ${res.discovered_accounts_count || 1} account(s) and synced real Cost Explorer billing records.`,
+          discovered: res.discovered_accounts || [],
+        });
+        setTimeout(() => {
+          onSuccess();
+        }, 2200);
+      } else {
+        setResultMsg({
+          type: "error",
+          text: res.message || "Failed to assume STS Role. Please verify the CloudFormation stack deployed successfully.",
+        });
+      }
+    } catch (err: any) {
+      setResultMsg({
+        type: "error",
+        text: err.message || "Network error communicating with OneSight STS engine.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle Direct Access Keys
+  const handleConnectKeys = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!accessKeyId.trim() || !secretAccessKey.trim()) {
       setResultMsg({ type: "error", text: "Please enter both AWS Access Key ID and Secret Access Key." });
@@ -86,7 +176,6 @@ export function ConnectAWSModal({
           type: "success",
           text: `Connected to AWS Account ${res.account_id || ""}! Real Cost Explorer records successfully synchronized.`,
         });
-        await checkStatus();
         setTimeout(() => {
           onSuccess();
           onClose();
@@ -101,274 +190,434 @@ export function ConnectAWSModal({
     }
   };
 
-  const handleSyncOnly = async () => {
-    setIsLoading(true);
-    setResultMsg(null);
-    try {
-      const res = await api.syncLiveAWS(tenantId, days);
-      if (res.success) {
-        setResultMsg({
-          type: "success",
-          text: `Synced ${res.records_synced} real AWS records (${res.period})! Total invoice spend: $${res.total_spend}.`,
-        });
-        setTimeout(() => {
-          onSuccess();
-        }, 1200);
-      } else {
-        setResultMsg({ type: "error", text: res.message || "Sync failed." });
-      }
-    } catch (err: any) {
-      setResultMsg({ type: "error", text: err.message || "Sync error." });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const iamPolicyExample = `{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ce:GetCostAndUsage",
-        "ce:GetCostForecast",
-        "ce:GetDimensionValues",
-        "ce:GetAnomalies"
-      ],
-      "Resource": "*"
-    }
-  ]
-}`;
-
-  const copyPolicy = () => {
-    navigator.clipboard.writeText(iamPolicyExample);
-    setCopiedPolicy(true);
-    setTimeout(() => setCopiedPolicy(false), 2000);
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl flex flex-col text-slate-900">
-        {/* Header */}
+        {/* Modal Header */}
         <div className="p-6 border-b border-slate-100 flex items-start justify-between bg-white">
           <div className="flex items-center space-x-3.5">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600 shrink-0">
-              <Cloud className="w-5 h-5 text-amber-600" />
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+              <Shield className="w-5 h-5 text-indigo-600" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <h3 className="text-base font-bold text-slate-900">Connect Real AWS Cost Explorer API</h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
-                  Live Telemetry
+                <h3 className="text-base font-bold text-slate-900">AWS Single-Click Account Onboarding</h3>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-indigo-50 text-indigo-600 border border-indigo-200">
+                  STS Cross-Account
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Query actual AWS Cost and Usage Reports (CUR), daily spend, and account dimensions using Boto3
+                Zero long-lived IAM keys. Connect securely using AWS STS AssumeRole and CloudFormation.
               </p>
             </div>
           </div>
-
           <button
             onClick={onClose}
-            className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Live Status Badge */}
-        <div className="p-6 space-y-5 text-xs">
-          {liveStatus && (
+        {/* Tab Switcher: 1-Click STS vs Direct Keys */}
+        <div className="px-6 pt-4 flex space-x-2 border-b border-slate-100 bg-slate-50/50">
+          <button
+            type="button"
+            onClick={() => setActiveMode("sts")}
+            className={`pb-3 px-3 text-xs font-bold transition-all relative flex items-center space-x-1.5 ${
+              activeMode === "sts"
+                ? "text-indigo-600 border-b-2 border-indigo-600"
+                : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+            <span>1-Click STS Role (Recommended)</span>
+            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 font-bold">
+              Fast & Secure
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMode("keys")}
+            className={`pb-3 px-3 text-xs font-bold transition-all relative flex items-center space-x-1.5 ${
+              activeMode === "keys"
+                ? "text-indigo-600 border-b-2 border-indigo-600"
+                : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <Key className="w-3.5 h-3.5 text-slate-400" />
+            <span>Direct IAM Access Keys</span>
+            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-500 font-medium">
+              Dev / Sandbox
+            </span>
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Result Alert Banner */}
+          {resultMsg && (
             <div
-              className={`p-4 rounded-xl border flex items-center justify-between ${
-                liveStatus.is_connected
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-900"
-                  : "bg-slate-50 border-slate-200 text-slate-800"
+              className={`p-4 rounded-xl border flex flex-col space-y-2 text-xs font-medium animate-in fade-in ${
+                resultMsg.type === "success"
+                  ? "bg-emerald-50/80 border-emerald-200 text-emerald-800"
+                  : "bg-red-50/80 border-red-200 text-red-800"
               }`}
             >
-              <div className="flex items-center space-x-3">
-                <div
-                  className={`w-3 h-3 rounded-full ${
-                    liveStatus.is_connected ? "bg-emerald-500 animate-pulse" : "bg-slate-400"
-                  }`}
-                />
-                <div>
-                  <div className="font-bold text-sm">
-                    {liveStatus.is_connected
-                      ? `Connected to Real AWS (Account: ${liveStatus.account_id || "Live"})`
-                      : "No Live AWS Credentials Connected"}
-                  </div>
-                  <div className="text-[11px] opacity-80 mt-0.5">
-                    {liveStatus.is_connected
-                      ? `Found ${liveStatus.verification?.services_count || 0} active services in your live AWS organization.`
-                      : "Enter an IAM Access Key or assume role below to stream real AWS Cost Explorer telemetry."}
-                  </div>
-                </div>
+              <div className="flex items-start space-x-2.5">
+                {resultMsg.type === "success" ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                )}
+                <span>{resultMsg.text}</span>
               </div>
-
-              {liveStatus.is_connected && (
-                <button
-                  type="button"
-                  onClick={handleSyncOnly}
-                  disabled={isLoading}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs flex items-center space-x-1.5"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
-                  <span>Sync Now</span>
-                </button>
+              {resultMsg.discovered && resultMsg.discovered.length > 0 && (
+                <div className="mt-2 pt-2 border-t border-emerald-200/60 space-y-1 pl-6">
+                  <p className="font-bold text-[11px] text-emerald-900">
+                    Discovered Linked Accounts:
+                  </p>
+                  {resultMsg.discovered.map((acc: any) => (
+                    <div key={acc.account_id} className="flex items-center space-x-2 text-[11px]">
+                      <Building2 className="w-3 h-3 text-emerald-600" />
+                      <span className="font-semibold">{acc.account_name}</span>
+                      <span className="text-slate-500 font-mono">({acc.account_id})</span>
+                      {acc.is_management && (
+                        <span className="text-[9px] px-1.5 rounded bg-emerald-200/80 text-emerald-900 font-bold">
+                          Management Payer
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}
 
-          {/* Form */}
-          <form onSubmit={handleConnect} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="font-semibold text-slate-700 flex items-center space-x-1">
-                  <Key className="w-3.5 h-3.5 text-slate-400" />
-                  <span>AWS Access Key ID</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="AKIAIOSFODNN7EXAMPLE"
-                  value={accessKeyId}
-                  onChange={(e) => setAccessKeyId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-semibold text-slate-700 flex items-center space-x-1">
-                  <Lock className="w-3.5 h-3.5 text-slate-400" />
-                  <span>AWS Secret Access Key</span>
-                </label>
-                <input
-                  type="password"
-                  required
-                  placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-                  value={secretAccessKey}
-                  onChange={(e) => setSecretAccessKey(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="font-semibold text-slate-700">AWS Default Region</label>
-                <input
-                  type="text"
-                  value={region}
-                  onChange={(e) => setRegion(e.target.value)}
-                  placeholder="us-east-1"
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-                <span className="text-[10px] text-slate-400 block">
-                  Note: AWS Cost Explorer endpoint is global (us-east-1).
-                </span>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="font-semibold text-slate-700">Days of Historical Invoices</label>
-                <select
-                  value={days}
-                  onChange={(e) => setDays(parseInt(e.target.value) || 30)}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                >
-                  <option value={7}>Last 7 Days</option>
-                  <option value={14}>Last 14 Days</option>
-                  <option value={30}>Last 30 Days (Recommended)</option>
-                  <option value={60}>Last 60 Days</option>
-                  <option value={90}>Last 90 Days</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="font-semibold text-slate-700 flex items-center justify-between">
-                <span>(Optional) Cross-Account IAM Role ARN</span>
-                <span className="text-[10px] text-slate-400 font-normal">For Organizations Payer / Linked accounts</span>
-              </label>
-              <input
-                type="text"
-                placeholder="arn:aws:iam::112233445566:role/OneSightFinOpsRole"
-                value={roleArn}
-                onChange={(e) => setRoleArn(e.target.value)}
-                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-mono text-xs placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-              />
-            </div>
-
-            {/* Status Feedback */}
-            {resultMsg && (
-              <div
-                className={`p-3.5 rounded-xl border text-xs leading-relaxed ${
-                  resultMsg.type === "success"
-                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                    : "bg-rose-50 text-rose-800 border-rose-200"
-                }`}
-              >
-                <div className="font-bold flex items-center space-x-1.5">
-                  {resultMsg.type === "success" ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  ) : (
-                    <AlertTriangle className="w-4 h-4 text-rose-600" />
-                  )}
-                  <span>{resultMsg.type === "success" ? "Connected Successfully" : "Connection Failed"}</span>
+          {/* MODE 1: 1-CLICK STS ROLE ONBOARDING */}
+          {activeMode === "sts" ? (
+            <div className="space-y-6">
+              {/* Step 1: Trust Parameters Overview */}
+              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/70 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                    <Shield className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Step 1: OneSight Trust Parameters</span>
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    External ID Prevents Confused Deputy
+                  </span>
                 </div>
-                <div className="mt-1">{resultMsg.text}</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200/80 flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] font-medium text-slate-400">OneSight SaaS Account</div>
+                      <div className="font-mono font-bold text-slate-800">
+                        {cftData?.onesight_account_id || "123456789012"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        copyToClipboard(cftData?.onesight_account_id || "123456789012", "saas_id")
+                      }
+                      className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-slate-100"
+                    >
+                      {copiedKey === "saas_id" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-lg border border-slate-200/80 flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] font-medium text-slate-400">Tenant External ID</div>
+                      <div className="font-mono font-bold text-slate-800 truncate max-w-[160px]">
+                        {cftData?.external_id || `onesight-${tenantId}-finops-auth`}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        copyToClipboard(cftData?.external_id || `onesight-${tenantId}-finops-auth`, "ext_id")
+                      }
+                      className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-slate-100"
+                    >
+                      {copiedKey === "ext_id" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
               </div>
-            )}
 
-            {/* Required IAM Permissions Box */}
-            <div className="space-y-2 pt-2 border-t border-slate-100">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-700 flex items-center space-x-1">
-                  <Shield className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Required IAM Policy</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={copyPolicy}
-                  className="text-indigo-600 hover:text-indigo-700 font-semibold flex items-center space-x-1 text-[11px]"
+              {/* Step 2: 1-Click Launch Button */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                    <Cloud className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Step 2: Deploy CloudFormation in your AWS Account</span>
+                  </span>
+                </div>
+
+                <a
+                  href={cftData?.quick_create_url || "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-xs shadow-lg shadow-indigo-600/20 flex items-center justify-center space-x-2 transition-all transform active:scale-[0.99]"
                 >
-                  {copiedPolicy ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedPolicy ? "Copied" : "Copy IAM JSON"}</span>
-                </button>
-              </div>
-              <div className="p-3 bg-slate-900 rounded-xl text-emerald-400 font-mono text-[10px] overflow-x-auto">
-                <pre>{iamPolicyExample}</pre>
-              </div>
-            </div>
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                  <span>🚀 1-Click Launch CloudFormation Stack in AWS Console</span>
+                  <ExternalLink className="w-3.5 h-3.5 ml-1 opacity-80" />
+                </a>
+                <p className="text-[11px] text-slate-500 text-center">
+                  Opens AWS Console Quick-Create with all parameters pre-populated. Takes ~15 seconds to create.
+                </p>
 
-            {/* Action Buttons */}
-            <div className="flex items-center justify-end space-x-2.5 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors"
-              >
-                Cancel
-              </button>
+                {/* Collapsible View for YAML / CLI / Terraform */}
+                <div className="border border-slate-200/80 rounded-xl overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setShowCodeDetails(!showCodeDetails)}
+                    className="w-full px-4 py-2.5 bg-slate-50 flex items-center justify-between text-xs font-semibold text-slate-700 hover:bg-slate-100/80"
+                  >
+                    <span>View CloudFormation Template, AWS CLI, or Terraform</span>
+                    {showCodeDetails ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                  </button>
+
+                  {showCodeDetails && (
+                    <div className="p-3 bg-slate-900 text-slate-100 space-y-2">
+                      <div className="flex space-x-2 border-b border-slate-800 pb-2">
+                        <button
+                          type="button"
+                          onClick={() => setActiveCodeTab("cft")}
+                          className={`text-[11px] font-bold px-2 py-1 rounded ${
+                            activeCodeTab === "cft" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          CloudFormation YAML
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveCodeTab("cli")}
+                          className={`text-[11px] font-bold px-2 py-1 rounded ${
+                            activeCodeTab === "cli" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          AWS CLI
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveCodeTab("tf")}
+                          className={`text-[11px] font-bold px-2 py-1 rounded ${
+                            activeCodeTab === "tf" ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          Terraform (HCL)
+                        </button>
+                      </div>
+
+                      <div className="relative">
+                        <pre className="text-[10px] font-mono overflow-x-auto max-h-48 p-2 text-slate-300">
+                          {activeCodeTab === "cft" && cftData?.cloudformation_yaml}
+                          {activeCodeTab === "cli" && cftData?.cli_command}
+                          {activeCodeTab === "tf" && cftData?.terraform_hcl}
+                        </pre>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const code =
+                              activeCodeTab === "cft"
+                                ? cftData?.cloudformation_yaml
+                                : activeCodeTab === "cli"
+                                ? cftData?.cli_command
+                                : cftData?.terraform_hcl;
+                            copyToClipboard(code || "", "code");
+                          }}
+                          className="absolute top-2 right-2 p-1.5 rounded bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700"
+                        >
+                          {copiedKey === "code" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Step 3: Enter Role ARN & Onboard */}
+              <form onSubmit={handleOnboardSTS} className="space-y-4 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Step 3: Connect & Auto-Discover Fleet</span>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      12-Digit AWS Account ID
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 112233445566"
+                      value={targetAccountId}
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        setTargetAccountId(val);
+                        if (val.length === 12 && /^\d+$/.test(val)) {
+                          setStsRoleArn(`arn:aws:iam::${val}:role/OneSightCostOptimizerRole`);
+                        }
+                      }}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <span className="text-[10px] text-slate-400">Auto-fills the default Role ARN</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Historical Cost Lookback
+                    </label>
+                    <select
+                      value={days}
+                      onChange={(e) => setDays(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:border-indigo-500"
+                    >
+                      <option value={30}>Last 30 Days (Standard)</option>
+                      <option value={60}>Last 60 Days</option>
+                      <option value={90}>Last 90 Days (Quarterly)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    Deployed Role ARN
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="arn:aws:iam::112233445566:role/OneSightCostOptimizerRole"
+                    value={stsRoleArn}
+                    onChange={(e) => setStsRoleArn(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center space-x-2 transition-all shadow-md disabled:opacity-50"
+                >
+                  {isLoading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-indigo-400" />
+                      <span>Assuming STS Role & Auto-Discovering Fleet...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Building2 className="w-4 h-4 text-emerald-400" />
+                      <span>Verify STS Role & Auto-Discover Fleet</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          ) : (
+            /* MODE 2: DIRECT IAM KEYS (DEV / SANDBOX) */
+            <form onSubmit={handleConnectKeys} className="space-y-4">
+              <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-3 text-xs text-amber-900 flex items-start space-x-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  For production environments, we recommend using the <strong>1-Click STS AssumeRole</strong> tab above.
+                  Enter IAM access keys only for local testing or sandboxes.
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    AWS Access Key ID <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="AKIAIOSFODNN7EXAMPLE"
+                    value={accessKeyId}
+                    onChange={(e) => setAccessKeyId(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    AWS Secret Access Key <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                    value={secretAccessKey}
+                    onChange={(e) => setSecretAccessKey(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Region
+                    </label>
+                    <input
+                      type="text"
+                      value={region}
+                      onChange={(e) => setRegion(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-800 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Historical Days
+                    </label>
+                    <select
+                      value={days}
+                      onChange={(e) => setDays(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none"
+                    >
+                      <option value={30}>Last 30 Days</option>
+                      <option value={60}>Last 60 Days</option>
+                      <option value={90}>Last 90 Days</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
               <button
                 type="submit"
                 disabled={isLoading}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-sm flex items-center space-x-1.5 transition-all disabled:opacity-50"
+                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center space-x-2 transition-all shadow-md disabled:opacity-50"
               >
                 {isLoading ? (
                   <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Connecting & Syncing...</span>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Verifying & Ingesting Cost Explorer Data...</span>
                   </>
                 ) : (
                   <>
-                    <Cloud className="w-3.5 h-3.5" />
-                    <span>Verify & Sync Real AWS Data</span>
+                    <Key className="w-4 h-4" />
+                    <span>Verify & Sync with IAM Keys</span>
                   </>
                 )}
               </button>
-            </div>
-          </form>
+            </form>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 px-6 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+          <div className="flex items-center space-x-2">
+            <Lock className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Read-only permissions: ce:*, organizations:ListAccounts, sts:GetCallerIdentity</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 rounded-lg border border-slate-200 font-semibold text-slate-600 hover:bg-slate-100 text-xs"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>

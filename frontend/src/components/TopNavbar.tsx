@@ -17,6 +17,7 @@ import {
   Users,
   LogOut,
   Zap,
+  Shield,
 } from "lucide-react";
 
 interface TopNavbarProps {
@@ -137,15 +138,15 @@ export function TopNavbar({
 
       {/* Right: Account filter, Date Picker, Help, Bell, User Profile */}
       <div className="flex items-center space-x-3">
-        {/* Connect Real AWS Button */}
+        {/* 1-Click AWS STS Account Onboarding Button */}
         {onOpenConnectAWS && (
           <button
             onClick={onOpenConnectAWS}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-300/80 text-xs font-bold transition-all shadow-xs"
-            title="Connect Live AWS Cost Explorer"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition-all shadow-xs"
+            title="1-Click AWS STS Cross-Account Onboarding"
           >
-            <Cloud className="w-3.5 h-3.5 text-amber-600" />
-            <span>Connect Real AWS</span>
+            <Shield className="w-3.5 h-3.5 text-indigo-600" />
+            <span>1-Click AWS Onboarding</span>
           </button>
         )}
 

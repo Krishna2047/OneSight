@@ -25,11 +25,13 @@ class AWSLiveCostExplorerService:
         secret_access_key: Optional[str] = None,
         session_token: Optional[str] = None,
         region: str = "us-east-1",
-        role_arn: Optional[str] = None
+        role_arn: Optional[str] = None,
+        external_id: Optional[str] = None
     ):
         """
         Builds authenticated boto3 Cost Explorer client.
         Cost Explorer endpoint is always in us-east-1.
+        Supports direct IAM keys OR Cross-Account STS AssumeRole with ExternalId.
         """
         # 1. Check if specific keys provided
         ak = access_key_id or os.environ.get("AWS_ACCESS_KEY_ID") or settings.AWS_ACCESS_KEY_ID
@@ -48,11 +50,15 @@ class AWSLiveCostExplorerService:
         # 2. Check if Cross-Account Role ARN needs to be assumed
         if role_arn:
             sts_client = boto_session.client("sts", region_name="us-east-1")
-            assumed = sts_client.assume_role(
-                RoleArn=role_arn,
-                RoleSessionName="OneSightFinOpsLiveSession",
-                DurationSeconds=3600
-            )
+            assume_kwargs = {
+                "RoleArn": role_arn,
+                "RoleSessionName": "OneSightFinOpsLiveSession",
+                "DurationSeconds": 3600
+            }
+            if external_id:
+                assume_kwargs["ExternalId"] = external_id
+
+            assumed = sts_client.assume_role(**assume_kwargs)
             credentials = assumed["Credentials"]
             return boto3.client(
                 "ce",
@@ -72,7 +78,8 @@ class AWSLiveCostExplorerService:
         secret_access_key: Optional[str] = None,
         session_token: Optional[str] = None,
         region: str = "us-east-1",
-        role_arn: Optional[str] = None
+        role_arn: Optional[str] = None,
+        external_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Tests live connectivity to AWS Cost Explorer API by requesting
@@ -84,7 +91,8 @@ class AWSLiveCostExplorerService:
                 secret_access_key=secret_access_key,
                 session_token=session_token,
                 region=region,
-                role_arn=role_arn
+                role_arn=role_arn,
+                external_id=external_id
             )
 
             end_dt = datetime.now(timezone.utc)
@@ -318,4 +326,299 @@ class AWSLiveCostExplorerService:
             "total_spend": round(total_live_cost, 2),
             "period": f"{start_str} to {end_str}",
             "message": f"Successfully pulled and synced {synced_count} real AWS Cost Explorer records (${total_live_cost:,.2f} USD)."
+        }
+
+    @classmethod
+    def generate_cft_template(cls, tenant_id: str, tenant_name: str = "Enterprise") -> Dict[str, Any]:
+        """
+        Generates 1-Click AWS CloudFormation Onboarding bundle:
+        - Unique External ID (prevents confused deputy problem)
+        - Master OneSight SaaS AWS Account ID
+        - Ready-to-deploy CloudFormation YAML
+        - 1-Click AWS Console Quick-Create Deep Link
+        - Terraform module & AWS CLI 1-liner
+        """
+        onesight_account_id = getattr(settings, "ONESIGHT_AWS_ACCOUNT_ID", "123456789012")
+        safe_tenant_clean = tenant_id.replace("tenant-", "").replace("_", "-")
+        external_id = f"onesight-{safe_tenant_clean}-finops-auth"
+
+        cft_yaml = f"""AWSTemplateFormatVersion: '2010-09-09'
+Description: 'OneSight FinOps Cross-Account STS AssumeRole with Cost Explorer and AWS Organizations Read-Only Access'
+
+Parameters:
+  OneSightAccountId:
+    Type: String
+    Default: '{onesight_account_id}'
+    Description: 'The AWS Account ID of the OneSight SaaS platform.'
+  ExternalId:
+    Type: String
+    Default: '{external_id}'
+    Description: 'Unique tenant External ID preventing the Confused Deputy problem.'
+
+Resources:
+  OneSightCostOptimizerRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: 'OneSightCostOptimizerRole'
+      Description: 'Allows OneSight Agentic AI & Cost Explorer to read AWS billing & organization topology'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${{OneSightAccountId}}:root'
+            Action: 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                'sts:ExternalId': !Ref ExternalId
+      Policies:
+        - PolicyName: 'OneSightCostExplorerReadOnly'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ce:GetCostAndUsage'
+                  - 'ce:GetCostForecast'
+                  - 'ce:GetDimensionValues'
+                  - 'ce:GetAnomalies'
+                  - 'organizations:ListAccounts'
+                  - 'organizations:DescribeOrganization'
+                  - 'sts:GetCallerIdentity'
+                Resource: '*'
+
+Outputs:
+  RoleArn:
+    Description: 'Copy this Role ARN back to OneSight to finish 1-click onboarding'
+    Value: !GetAtt OneSightCostOptimizerRole.Arn
+  ExternalId:
+    Description: 'Configured External ID'
+    Value: !Ref ExternalId
+"""
+
+        quick_create_url = (
+            f"https://console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/quickcreate"
+            f"?stackName=OneSight-CostOptimizer-Integration"
+            f"&param_OneSightAccountId={onesight_account_id}"
+            f"&param_ExternalId={external_id}"
+        )
+
+        cli_command = (
+            f"aws cloudformation create-stack "
+            f"--stack-name OneSight-FinOps-Integration "
+            f"--template-body file://onesight-cft.yaml "
+            f"--parameters ParameterKey=OneSightAccountId,ParameterValue={onesight_account_id} "
+            f"ParameterKey=ExternalId,ParameterValue={external_id} "
+            f"--capabilities CAPABILITY_NAMED_IAM"
+        )
+
+        terraform_hcl = f"""# OneSight FinOps Cross-Account STS AssumeRole
+resource "aws_iam_role" "onesight_role" {{
+  name = "OneSightCostOptimizerRole"
+
+  assume_role_policy = jsonencode({{
+    Version = "2012-10-17"
+    Statement = [
+      {{
+        Effect = "Allow"
+        Principal = {{
+          AWS = "arn:aws:iam::{onesight_account_id}:root"
+        }}
+        Action = "sts:AssumeRole"
+        Condition = {{
+          StringEquals = {{
+            "sts:ExternalId" = "{external_id}"
+          }}
+        }}
+      }}
+    ]
+  }})
+}}
+
+resource "aws_iam_role_policy" "onesight_policy" {{
+  name = "OneSightCostExplorerReadOnly"
+  role = aws_iam_role.onesight_role.id
+
+  policy = jsonencode({{
+    Version = "2012-10-17"
+    Statement = [
+      {{
+        Effect = "Allow"
+        Action = [
+          "ce:GetCostAndUsage",
+          "ce:GetCostForecast",
+          "ce:GetDimensionValues",
+          "ce:GetAnomalies",
+          "organizations:ListAccounts",
+          "organizations:DescribeOrganization",
+          "sts:GetCallerIdentity"
+        ]
+        Resource = "*"
+      }}
+    ]
+  }})
+}}
+
+output "onesight_role_arn" {{
+  value = aws_iam_role.onesight_role.arn
+}}
+"""
+
+        return {
+            "onesight_account_id": onesight_account_id,
+            "external_id": external_id,
+            "role_name": "OneSightCostOptimizerRole",
+            "cloudformation_yaml": cft_yaml,
+            "quick_create_url": quick_create_url,
+            "cli_command": cli_command,
+            "terraform_hcl": terraform_hcl,
+        }
+
+    @classmethod
+    def verify_and_onboard_sts_role(
+        cls,
+        db: Session,
+        tenant_id: str,
+        role_arn: str,
+        external_id: str,
+        sync_days: int = 30
+    ) -> Dict[str, Any]:
+        """
+        1-Click Onboards customer AWS Account using STS AssumeRole with ExternalId:
+        1. Calls sts:AssumeRole to verify the trust relationship and external ID.
+        2. Calls sts:GetCallerIdentity to retrieve customer AWS Account ID.
+        3. Tries AWS Organizations auto-discovery (organizations:ListAccounts).
+        4. Syncs real AWS Cost Explorer records into the database.
+        5. Registers all accounts in database.
+        """
+        ak = os.environ.get("AWS_ACCESS_KEY_ID") or settings.AWS_ACCESS_KEY_ID
+        sk = os.environ.get("AWS_SECRET_ACCESS_KEY") or settings.AWS_SECRET_ACCESS_KEY
+
+        session_kwargs = {}
+        if ak and sk:
+            session_kwargs["aws_access_key_id"] = ak
+            session_kwargs["aws_secret_access_key"] = sk
+
+        boto_session = boto3.Session(**session_kwargs)
+        sts_client = boto_session.client("sts", region_name="us-east-1")
+
+        try:
+            assumed = sts_client.assume_role(
+                RoleArn=role_arn,
+                RoleSessionName="OneSightOnboardingSession",
+                ExternalId=external_id,
+                DurationSeconds=3600
+            )
+            creds = assumed["Credentials"]
+        except Exception as e:
+            logger.error(f"Failed to assume role {role_arn} with external_id {external_id}: {e}")
+            return {
+                "success": False,
+                "error_code": "ASSUME_ROLE_FAILED",
+                "message": f"Could not assume STS Role ({role_arn}). Verify the CloudFormation stack deployed with External ID '{external_id}'. AWS Error: {str(e)}"
+            }
+
+        # 2. Get customer account identity
+        assumed_session = boto3.Session(
+            aws_access_key_id=creds["AccessKeyId"],
+            aws_secret_access_key=creds["SecretAccessKey"],
+            aws_session_token=creds["SessionToken"],
+            region_name="us-east-1"
+        )
+        assumed_sts = assumed_session.client("sts")
+        caller = assumed_sts.get_caller_identity()
+        customer_account_id = caller.get("Account", "UNKNOWN")
+
+        # 3. AWS Organizations fleet auto-discovery
+        discovered_accounts = []
+        is_org_management = False
+        try:
+            org_client = assumed_session.client("organizations")
+            paginator = org_client.get_paginator("list_accounts")
+            for page in paginator.paginate():
+                for acc_item in page.get("Accounts", []):
+                    acc_id = acc_item.get("Id")
+                    acc_name = acc_item.get("Name", f"AWS Account ({acc_id})")
+                    acc_status = acc_item.get("Status", "ACTIVE")
+
+                    # Register in DB
+                    existing_acc = db.query(AWSAccount).filter(
+                        AWSAccount.tenant_id == tenant_id,
+                        AWSAccount.account_id == acc_id
+                    ).first()
+
+                    if not existing_acc:
+                        new_acc = AWSAccount(
+                            tenant_id=tenant_id,
+                            account_id=acc_id,
+                            account_name=acc_name,
+                            account_type="MANAGEMENT" if acc_id == customer_account_id else "MEMBER",
+                            default_region="us-east-1",
+                            status="CONNECTED" if acc_status == "ACTIVE" else "SUSPENDED",
+                            role_arn=role_arn
+                        )
+                        db.add(new_acc)
+                    else:
+                        existing_acc.status = "CONNECTED"
+                        existing_acc.role_arn = role_arn
+
+                    discovered_accounts.append({
+                        "account_id": acc_id,
+                        "account_name": acc_name,
+                        "status": acc_status,
+                        "is_management": (acc_id == customer_account_id)
+                    })
+            db.commit()
+            is_org_management = len(discovered_accounts) > 1
+        except Exception as org_err:
+            logger.info(f"AWS Organizations discovery skipped or standalone account: {org_err}")
+            # Ensure standalone primary account is registered
+            acc = db.query(AWSAccount).filter(
+                AWSAccount.tenant_id == tenant_id,
+                AWSAccount.account_id == customer_account_id
+            ).first()
+            if not acc:
+                acc = AWSAccount(
+                    tenant_id=tenant_id,
+                    account_id=customer_account_id,
+                    account_name=f"AWS Account ({customer_account_id})",
+                    account_type="MANAGEMENT",
+                    default_region="us-east-1",
+                    status="CONNECTED",
+                    role_arn=role_arn
+                )
+                db.add(acc)
+                db.commit()
+            discovered_accounts.append({
+                "account_id": customer_account_id,
+                "account_name": f"AWS Primary Account ({customer_account_id})",
+                "status": "ACTIVE",
+                "is_management": True
+            })
+
+        # 4. Sync live Cost Explorer data
+        sync_result = {}
+        try:
+            sync_result = cls.sync_live_aws_to_database(
+                db=db,
+                tenant_id=tenant_id,
+                account_id=customer_account_id,
+                role_arn=role_arn,
+                external_id=external_id,
+                days=sync_days
+            )
+        except Exception as sync_err:
+            logger.warning(f"Initial sync warning: {sync_err}")
+            sync_result = {"warning": str(sync_err), "records_synced": 0}
+
+        return {
+            "success": True,
+            "account_id": customer_account_id,
+            "role_arn": role_arn,
+            "external_id": external_id,
+            "is_org_management": is_org_management,
+            "discovered_accounts": discovered_accounts,
+            "discovered_accounts_count": len(discovered_accounts),
+            "sync_result": sync_result,
+            "message": f"Successfully onboarded AWS Account {customer_account_id} via STS Cross-Account Role! Discovered {len(discovered_accounts)} member account(s)."
         }

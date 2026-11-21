@@ -25,6 +25,12 @@ class AWSConnectCredentialsRequest(BaseModel):
     sync_immediately: bool = True
     days: int = 30
 
+class AWSOnboardSTSRequest(BaseModel):
+    role_arn: str
+    external_id: str
+    sync_immediately: bool = True
+    days: int = 30
+
 def get_tenant_id(x_tenant_id: Optional[str] = Header("tenant-acme")) -> str:
     return x_tenant_id or "tenant-acme"
 
@@ -386,3 +392,31 @@ def sync_live_aws(
         days=days
     )
     return res
+
+@router.get("/aws/onboarding-template")
+def get_aws_onboarding_template(
+    tenant_id: str = Depends(get_tenant_id)
+) -> Dict[str, Any]:
+    """
+    Returns 1-Click AWS CloudFormation Onboarding template,
+    unique tenant External ID, master SaaS account ID, and quick-launch URL.
+    """
+    return AWSLiveCostExplorerService.generate_cft_template(tenant_id)
+
+@router.post("/aws/onboard-sts-role")
+def onboard_sts_role(
+    req: AWSOnboardSTSRequest,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    1-Click onboards customer AWS account using STS AssumeRole with External ID.
+    Performs organizations auto-discovery and live Cost Explorer sync.
+    """
+    return AWSLiveCostExplorerService.verify_and_onboard_sts_role(
+        db=db,
+        tenant_id=tenant_id,
+        role_arn=req.role_arn,
+        external_id=req.external_id,
+        sync_days=req.days
+    )

@@ -106,6 +106,29 @@ export const api = {
     }),
   syncLiveAWS: (tenantId: string, days: number = 30) =>
     fetchJson<any>(`/billing/aws/sync-live?days=${days}`, tenantId, { method: "POST" }),
+  getAWSOnboardingTemplate: (tenantId: string) =>
+    fetchJson<{
+      onesight_account_id: string;
+      external_id: string;
+      role_name: string;
+      cloudformation_yaml: string;
+      quick_create_url: string;
+      cli_command: string;
+      terraform_hcl: string;
+    }>("/billing/aws/onboarding-template", tenantId),
+  onboardSTSRole: (
+    tenantId: string,
+    payload: {
+      role_arn: string;
+      external_id: string;
+      sync_immediately?: boolean;
+      days?: number;
+    }
+  ) =>
+    fetchJson<any>("/billing/aws/onboard-sts-role", tenantId, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 
   // AWS Cost Anomalies & AI RCA
   getAnomalies: (

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
     AWS_DEFAULT_REGION: str = "us-east-1"
+    ONESIGHT_AWS_ACCOUNT_ID: str = "123456789012"  # SaaS master account that assumes customer cross-account roles
     
     GCP_PROJECT_ID: Optional[str] = None
     GCP_CREDENTIALS_FILE: Optional[str] = None
