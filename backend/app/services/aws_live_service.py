@@ -180,8 +180,11 @@ class AWSLiveCostExplorerService:
             role_arn=role_arn
         )
 
-        end_dt = datetime.now(timezone.utc)
-        start_dt = end_dt - timedelta(days=days)
+        now_dt = datetime.now(timezone.utc)
+        # Note on AWS Cost Explorer API: TimePeriod 'End' is strictly EXCLUSIVE.
+        # To include today's in-progress spend, End must be tomorrow.
+        end_dt = now_dt + timedelta(days=1)
+        start_dt = now_dt - timedelta(days=days)
         start_str = start_dt.strftime("%Y-%m-%d")
         end_str = end_dt.strftime("%Y-%m-%d")
 
@@ -266,8 +269,11 @@ class AWSLiveCostExplorerService:
             external_id=external_id
         )
 
-        end_dt = datetime.now(timezone.utc)
-        start_dt = end_dt - timedelta(days=days)
+        now_dt = datetime.now(timezone.utc)
+        # Note on AWS Cost Explorer API: TimePeriod 'End' is strictly EXCLUSIVE.
+        # To include today's in-progress spend, End must be tomorrow.
+        end_dt = now_dt + timedelta(days=1)
+        start_dt = now_dt - timedelta(days=days)
         start_str = start_dt.strftime("%Y-%m-%d")
         end_str = end_dt.strftime("%Y-%m-%d")
 
