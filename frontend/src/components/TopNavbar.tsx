@@ -58,7 +58,7 @@ export function TopNavbar({
 
   return (
     <header className="h-16 bg-white border-b border-slate-200/80 px-6 flex items-center justify-between sticky top-0 z-30 select-none">
-      {/* Left: Organization Switcher & Trial Pill */}
+      {/* Left: Organization Switcher */}
       <div className="flex items-center space-x-4">
         {/* Organization Switcher Dropdown */}
         <div className="relative">
@@ -131,12 +131,6 @@ export function TopNavbar({
               </div>
             </div>
           )}
-        </div>
-
-        {/* Trial Status Pill (Matching Image 5) */}
-        <div className="hidden sm:flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-xs text-amber-700 font-medium">
-          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-          <span>Trial Ends in 30 Days &gt;</span>
         </div>
       </div>
 
