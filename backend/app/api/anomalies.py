@@ -16,7 +16,7 @@ def get_tenant_id(x_tenant_id: Optional[str] = Header("tenant-acme")) -> str:
     return x_tenant_id or "tenant-acme"
 
 class SpikeSimulationRequest(BaseModel):
-    account_id: str = "223344556677"
+    account_id: str
     service_name: str = "Amazon Bedrock (GenAI)"
     spike_cost: float = 720.0
     reason: Optional[str] = "Runaway automated GenAI batch prompt evaluation script"
@@ -162,6 +162,12 @@ def simulate_cost_spike(
         BillingRecord.record_date == today_str
     ).first()
 
+    acc_item = db.query(AWSAccount).filter(
+        AWSAccount.tenant_id == tenant_id,
+        AWSAccount.account_id == req.account_id
+    ).first()
+    acc_name = acc_item.account_name if acc_item else f"AWS Account ({req.account_id})"
+
     if record:
         record.cost = req.spike_cost
         record.usage_amount = req.spike_cost * 3.5
@@ -170,7 +176,7 @@ def simulate_cost_spike(
             tenant_id=tenant_id,
             provider=CloudProvider.AWS,
             account_id=req.account_id,
-            account_name="Acme Production Core" if req.account_id == "112233445566" else "Acme AI & Data Platform",
+            account_name=acc_name,
             service_name=req.service_name,
             region="us-east-1",
             cost=req.spike_cost,

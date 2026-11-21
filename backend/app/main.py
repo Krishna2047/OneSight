@@ -1,12 +1,15 @@
+import os
+import json
 import logging
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import Base, engine, SessionLocal
-from app.models.tenant import Tenant
-from app.services.cloud_simulator import seed_multitenant_aws_data
+from app.models.tenant import Tenant, AWSAccount
+from app.models.billing import BillingRecord, CloudProvider
 from app.services.detector import detect_anomalies
 from app.services.agent_runtime import AgenticFinOpsEngine
 from app.api.billing import router as billing_router
@@ -24,22 +27,92 @@ async def lifespan(app: FastAPI):
 
     db = SessionLocal()
     try:
-        tenant_count = db.query(Tenant).count()
-        if settings.MOCK_CLOUD_ENABLED and tenant_count == 0:
-            logger.info("Seeding multi-tenant organizations and granular AWS Cost Explorer records...")
-            seed_multitenant_aws_data(db, days=30)
-            
-            # Run initial detection and RCA for tenant-acme
-            detected = detect_anomalies(db, tenant_id="tenant-acme")
-            logger.info(f"Initial anomaly detection flagged {len(detected)} AWS cost anomalies.")
-            
-            for anomaly in detected:
-                if not anomaly.root_cause_summary:
-                    try:
-                        AgenticFinOpsEngine.run_rca(db, anomaly.id)
-                    except Exception as e:
-                        logger.warning(f"Initial RCA generation warning: {e}")
-            logger.info("Database initialized successfully with multi-tenant AWS Cost Explorer records.")
+        # Ensure Primary Tenant is present
+        tenant = db.query(Tenant).filter(Tenant.id == "tenant-acme").first()
+        if not tenant:
+            logger.info("Initializing primary tenant 'Production Organization'...")
+            tenant = Tenant(
+                id="tenant-acme",
+                name="Production Organization",
+                slug="prod-org",
+                plan="ENTERPRISE",
+                is_active=True
+            )
+            db.add(tenant)
+            db.commit()
+
+        # Bootstrap real AWS Cost Explorer records if database is empty (e.g. fresh PostgreSQL)
+        record_count = db.query(BillingRecord).filter(BillingRecord.tenant_id == "tenant-acme").count()
+        if record_count == 0:
+            seed_file = os.path.join(os.path.dirname(__file__), "data", "real_aws_data.json")
+            if os.path.exists(seed_file):
+                logger.info(f"Bootstrapping real AWS records from {seed_file}...")
+                with open(seed_file, "r") as f:
+                    seed_data = json.load(f)
+
+                # Ensure accounts from real data are registered in DB
+                for acc_info in seed_data.get("accounts", []):
+                    acc_id = acc_info.get("account_id")
+                    if acc_id:
+                        existing_acc = db.query(AWSAccount).filter(
+                            AWSAccount.tenant_id == "tenant-acme",
+                            AWSAccount.account_id == acc_id
+                        ).first()
+                        if not existing_acc:
+                            db.add(AWSAccount(
+                                tenant_id="tenant-acme",
+                                account_id=acc_id,
+                                account_name=acc_info.get("account_name", f"AWS Account ({acc_id})"),
+                                account_type=acc_info.get("account_type", "MANAGEMENT"),
+                                default_region=acc_info.get("default_region", "us-east-1"),
+                                status=acc_info.get("status", "CONNECTED")
+                            ))
+                db.commit()
+
+                recs_to_add = []
+                for r in seed_data.get("billing_records", []):
+                    ts_val = datetime.now(timezone.utc)
+                    if r.get("timestamp"):
+                        try:
+                            ts_val = datetime.fromisoformat(r["timestamp"])
+                        except Exception:
+                            pass
+
+                    tags_val = r.get("tags")
+                    if isinstance(tags_val, str):
+                        try:
+                            tags_val = json.loads(tags_val)
+                        except Exception:
+                            tags_val = {"source": "real-aws"}
+
+                    recs_to_add.append(
+                        BillingRecord(
+                            tenant_id=r.get("tenant_id", "tenant-acme"),
+                            provider=CloudProvider.AWS,
+                            account_id=r.get("account_id", ""),
+                            account_name=r.get("account_name", "AWS Account"),
+                            service_name=r.get("service_name", "Unknown"),
+                            region=r.get("region", "us-east-1"),
+                            usage_type=r.get("usage_type", "Usage"),
+                            charge_type=r.get("charge_type", "Usage"),
+                            cost=float(r.get("cost", 0.0)),
+                            currency=r.get("currency", "USD"),
+                            usage_amount=float(r.get("usage_amount", 0.0)),
+                            usage_unit=r.get("usage_unit", "Units"),
+                            record_date=r.get("record_date"),
+                            timestamp=ts_val,
+                            resource_id=r.get("resource_id"),
+                            tags=tags_val,
+                        )
+                    )
+                db.bulk_save_objects(recs_to_add)
+                db.commit()
+                logger.info(f"Successfully bootstrapped {len(recs_to_add)} real AWS Cost Explorer records.")
+
+        logger.info("OneSight database ready.")
+    except Exception as e:
+        logger.error(f"Error during OneSight startup initialization: {e}", exc_info=True)
+        db.rollback()
     finally:
         db.close()
 

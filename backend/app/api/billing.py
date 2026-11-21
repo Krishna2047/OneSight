@@ -66,16 +66,22 @@ def list_aws_accounts(
     db: Session = Depends(get_db)
 ) -> List[Dict[str, Any]]:
     accounts = db.query(AWSAccount).filter(AWSAccount.tenant_id == tenant_id).all()
-    return [
-        {
+    from app.core.security import mask_access_key
+    res = []
+    for a in accounts:
+        creds = a.get_decrypted_credentials() if hasattr(a, "get_decrypted_credentials") else {}
+        ak = creds.get("access_key_id")
+        res.append({
             "account_id": a.account_id,
             "account_name": a.account_name,
             "account_type": a.account_type,
             "region": a.default_region,
-            "status": a.status
-        }
-        for a in accounts
-    ]
+            "status": a.status,
+            "auth_method": getattr(a, "auth_method", "STS_ROLE"),
+            "masked_access_key": mask_access_key(ak) if ak else None,
+            "last_synced_at": a.last_synced_at.isoformat() if getattr(a, "last_synced_at", None) else None,
+        })
+    return res
 
 @router.get("/dashboard-summary")
 def get_dashboard_summary(
@@ -319,6 +325,61 @@ def connect_aws_credentials(
             "error_code": verify.get("error_code")
         }
 
+    real_account_id = verify.get("account_id") or req.account_id
+    if not real_account_id or real_account_id == "UNKNOWN":
+        return {
+            "status": "FAILED",
+            "message": "Unable to determine AWS Account ID from credentials. Please verify IAM permissions for sts:GetCallerIdentity."
+        }
+
+    # Ensure Tenant exists
+    from datetime import datetime, timezone
+    from app.core.security import mask_access_key
+    tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+    if not tenant:
+        tenant = Tenant(
+            id=tenant_id,
+            name=f"AWS Account ({real_account_id})",
+            slug=f"aws-{real_account_id}",
+            plan="ENTERPRISE",
+            is_active=True
+        )
+        db.add(tenant)
+        db.commit()
+
+    # Find or create AWSAccount and encrypt credentials at rest
+    acc = db.query(AWSAccount).filter(
+        AWSAccount.tenant_id == tenant_id,
+        AWSAccount.account_id == real_account_id
+    ).first()
+    if not acc:
+        acc = AWSAccount(
+            tenant_id=tenant_id,
+            account_id=real_account_id,
+            account_name=req.account_name or f"AWS Account ({real_account_id})",
+            account_type="MANAGEMENT",
+            default_region=req.region,
+            status="CONNECTED",
+            auth_method="IAM_KEYS",
+            role_arn=req.role_arn,
+            last_synced_at=datetime.now(timezone.utc)
+        )
+        db.add(acc)
+    else:
+        acc.status = "CONNECTED"
+        acc.default_region = req.region
+        acc.auth_method = "IAM_KEYS"
+        acc.last_synced_at = datetime.now(timezone.utc)
+        if req.role_arn:
+            acc.role_arn = req.role_arn
+
+    acc.set_credentials(
+        access_key_id=req.access_key_id,
+        secret_access_key=req.secret_access_key,
+        session_token=req.session_token
+    )
+    db.commit()
+
     os.environ["AWS_ACCESS_KEY_ID"] = req.access_key_id
     os.environ["AWS_SECRET_ACCESS_KEY"] = req.secret_access_key
     if req.session_token:
@@ -330,17 +391,19 @@ def connect_aws_credentials(
         sync_result = AWSLiveCostExplorerService.sync_live_aws_to_database(
             db=db,
             tenant_id=tenant_id,
-            account_id=verify.get("account_id") or req.account_id,
+            account_id=real_account_id,
             access_key_id=req.access_key_id,
             secret_access_key=req.secret_access_key,
+            session_token=req.session_token,
             role_arn=req.role_arn,
             days=req.days
         )
 
     return {
         "status": "SUCCESS",
-        "message": "Real AWS Cost Explorer credentials connected successfully!",
-        "account_id": verify.get("account_id"),
+        "message": f"Real AWS Cost Explorer credentials connected and securely encrypted at rest for account {real_account_id}.",
+        "account_id": real_account_id,
+        "masked_access_key": mask_access_key(req.access_key_id),
         "sync_result": sync_result
     }
 

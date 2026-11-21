@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     DATABASE_URL: str = f"sqlite:///{_DEFAULT_DB_PATH}"
     
+    # Security & Encryption (Fernet AES-256 for Credentials At Rest)
+    ENCRYPTION_KEY: str = "onesight-finops-secure-master-encryption-key-2026"
+    
     # Cloud Simulation / Mock Mode
     MOCK_CLOUD_ENABLED: bool = False
     
@@ -18,7 +21,7 @@ class Settings(BaseSettings):
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
     AWS_DEFAULT_REGION: str = "us-east-1"
-    ONESIGHT_AWS_ACCOUNT_ID: str = "123456789012"  # SaaS master account that assumes customer cross-account roles
+    ONESIGHT_AWS_ACCOUNT_ID: Optional[str] = None  # SaaS master account that assumes customer cross-account roles
     
     GCP_PROJECT_ID: Optional[str] = None
     GCP_CREDENTIALS_FILE: Optional[str] = None

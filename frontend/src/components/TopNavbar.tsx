@@ -52,6 +52,10 @@ export function TopNavbar({
     t.name.toLowerCase().includes(orgSearch.toLowerCase())
   );
 
+  const currentAccount = accounts.find((a) => a.account_id === selectedAccountId) || accounts[0];
+  const displayAccountId = currentAccount?.account_id || "Connected";
+  const displayAccountName = currentAccount?.account_name || "Cloud Admin";
+
   return (
     <header className="h-16 bg-white border-b border-slate-200/80 px-6 flex items-center justify-between sticky top-0 z-30 select-none">
       {/* Left: Organization Switcher & Trial Pill */}
@@ -206,8 +210,8 @@ export function TopNavbar({
               AWS
             </div>
             <div className="text-left hidden xl:block">
-              <span className="text-xs font-bold text-slate-800 block leading-tight">AWS Admin</span>
-              <span className="text-[10px] text-slate-400 block leading-tight font-mono">476383094285</span>
+              <span className="text-xs font-bold text-slate-800 block leading-tight">{displayAccountName}</span>
+              <span className="text-[10px] text-slate-400 block leading-tight font-mono">{displayAccountId}</span>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden xl:block" />
           </button>
@@ -222,8 +226,8 @@ export function TopNavbar({
                     AWS
                   </div>
                   <div>
-                    <h5 className="font-bold text-slate-800">AWS Live Administrator</h5>
-                    <p className="text-[10px] text-slate-400 font-mono">Account: 476383094285</p>
+                    <h5 className="font-bold text-slate-800">{displayAccountName}</h5>
+                    <p className="text-[10px] text-slate-400 font-mono">Account: {displayAccountId}</p>
                   </div>
                 </div>
                 <button className="px-2.5 py-1 text-[11px] font-semibold border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">

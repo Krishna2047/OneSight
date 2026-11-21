@@ -17,8 +17,8 @@ AWS_FINOPS_HEURISTICS = {
     "Amazon Bedrock (GenAI)": {
         "summary": "Runaway Generative AI inference loop detected. A sustained surge in Claude 3.5 Sonnet / Llama 3 invocation tokens was triggered by un-throttled automated batch evaluation scripts in us-east-1.",
         "suspect_resources": [
-            "arn:aws:bedrock:us-east-1:223344556677:foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0",
-            "arn:aws:iam::223344556677:role/BedrockBatchEvalWorkerRole"
+            "arn:aws:bedrock:us-east-1:{ACCOUNT_ID}:foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0",
+            "arn:aws:iam::{ACCOUNT_ID}:role/BedrockBatchEvalWorkerRole"
         ],
         "remediation_recommendations": [
             "Enable AWS Service Quotas token invocation throttling for Bedrock Foundation Models.",
@@ -31,8 +31,8 @@ AWS_FINOPS_HEURISTICS = {
     "Amazon Elastic Compute Cloud - Compute": {
         "summary": "Runaway EC2 Auto-Scaling Group scale-out event. Health check flapping on an ECS container task spawned 16 un-needed c5.2xlarge on-demand instances without spot diversification.",
         "suspect_resources": [
-            "arn:aws:autoscaling:us-east-1:112233445566:autoScalingGroup:asg-prod-core-api",
-            "arn:aws:ec2:us-east-1:112233445566:instance/i-081729bfa8102"
+            "arn:aws:autoscaling:us-east-1:{ACCOUNT_ID}:autoScalingGroup:asg-prod-core-api",
+            "arn:aws:ec2:us-east-1:{ACCOUNT_ID}:instance/i-081729bfa8102"
         ],
         "remediation_recommendations": [
             "Cap Maximum Capacity on `asg-prod-core-api` from 32 down to 10 instances.",
@@ -45,8 +45,8 @@ AWS_FINOPS_HEURISTICS = {
     "AWS NAT Gateway": {
         "summary": "Excessive cross-AZ and cross-region egress traffic. An automated container image backup script in us-east-1 was pulling heavy multi-GB Docker layers through the NAT Gateway instead of an internal S3 VPC Gateway Endpoint.",
         "suspect_resources": [
-            "arn:aws:ec2:us-east-1:112233445566:natgateway/nat-0819ff31902eb341",
-            "arn:aws:ec2:us-east-1:112233445566:route-table/rtb-03487f"
+            "arn:aws:ec2:us-east-1:{ACCOUNT_ID}:natgateway/nat-0819ff31902eb341",
+            "arn:aws:ec2:us-east-1:{ACCOUNT_ID}:route-table/rtb-03487f"
         ],
         "remediation_recommendations": [
             "Provision a free AWS Gateway VPC Endpoint for S3 in VPC `vpc-081829e` to route S3 traffic off the paid NAT gateway.",
@@ -59,8 +59,8 @@ AWS_FINOPS_HEURISTICS = {
     "Amazon RDS": {
         "summary": "Unoptimized multi-AZ PostgreSQL read replicas running on provisioned IOPS io2 storage with unindexed analytical queries scanning 80M rows.",
         "suspect_resources": [
-            "arn:aws:rds:us-east-1:112233445566:db:prod-core-postgres-primary",
-            "arn:aws:rds:us-west-2:112233445566:db:prod-core-postgres-replica"
+            "arn:aws:rds:us-east-1:{ACCOUNT_ID}:db:prod-core-postgres-primary",
+            "arn:aws:rds:us-west-2:{ACCOUNT_ID}:db:prod-core-postgres-replica"
         ],
         "remediation_recommendations": [
             "Migrate storage volume from expensive io2 to general purpose gp3 with baseline 3,000 IOPS.",
@@ -149,7 +149,16 @@ class AgenticFinOpsEngine:
                     break
 
             if matched:
-                rca_data = matched
+                rca_data = {
+                    "summary": matched["summary"],
+                    "suspect_resources": [
+                        r.replace("{ACCOUNT_ID}", anomaly.account_id or "customer-account")
+                        for r in matched.get("suspect_resources", [])
+                    ],
+                    "remediation_recommendations": matched.get("remediation_recommendations", []),
+                    "cli_remediation": matched.get("cli_remediation", ""),
+                    "confidence": matched.get("confidence", 0.90)
+                }
                 thought_log += f"\nMatched specialized AWS FinOps heuristics for {anomaly.service_name}."
             else:
                 rca_data = {

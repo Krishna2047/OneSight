@@ -42,8 +42,8 @@ class IdleResource(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(String(64), nullable=False, default="tenant-acme", index=True)
     provider = Column(Enum(CloudProvider), nullable=False, default=CloudProvider.AWS)
-    account_id = Column(String(64), nullable=False, default="112233445566")
-    account_name = Column(String(128), nullable=False, default="Production Core")
+    account_id = Column(String(64), nullable=False)
+    account_name = Column(String(128), nullable=False, default="Cloud Account")
     resource_id = Column(String(256), nullable=False, unique=True)
     resource_type = Column(String(128), nullable=False) # "Unattached EBS Volume", "Idle NAT Gateway", "Unassigned Elastic IP"
     resource_name = Column(String(128), nullable=False)

@@ -443,7 +443,7 @@ export function DashboardOverview({
                 <div className="space-y-1">
                   <h4 className="text-sm font-bold text-slate-900">All Cloud Governance Policies Healthy</h4>
                   <p className="text-xs text-slate-500 max-w-sm">
-                    No active budget overruns, orphan retention breaches, or quota violations detected for AWS Account 476383094285.
+                    No active budget overruns, orphan retention breaches, or quota violations detected for your active cloud accounts.
                   </p>
                 </div>
               </div>

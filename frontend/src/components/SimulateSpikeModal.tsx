@@ -20,7 +20,7 @@ export function SimulateSpikeModal({
   tenantId,
   accounts,
 }: SimulateSpikeModalProps) {
-  const [accountId, setAccountId] = useState(accounts[0]?.account_id || "112233445566");
+  const [accountId, setAccountId] = useState(accounts[0]?.account_id || "");
   const [serviceName, setServiceName] = useState("Amazon Bedrock (GenAI)");
   const [spikeCost, setSpikeCost] = useState(720.0);
   const [reason, setReason] = useState("Runaway GenAI batch evaluation loop");
@@ -29,24 +29,26 @@ export function SimulateSpikeModal({
 
   if (!isOpen) return null;
 
+  const defaultAccId = accounts[0]?.account_id || "";
+
   const presets = [
     {
       label: "AWS Bedrock Runaway Token Surge ($720)",
-      accountId: accounts[1]?.account_id || accounts[0]?.account_id || "223344556677",
+      accountId: accounts[1]?.account_id || defaultAccId,
       service: "Amazon Bedrock (GenAI)",
       cost: 720.0,
       reason: "Automated batch prompt evaluation script executed without token rate limiter",
     },
     {
       label: "AWS NAT Gateway Cross-AZ Egress ($420)",
-      accountId: accounts[0]?.account_id || "112233445566",
+      accountId: defaultAccId,
       service: "AWS NAT Gateway",
       cost: 420.0,
       reason: "Container backups transferred multi-GB images through NAT instead of VPC Endpoint",
     },
     {
       label: "Amazon EC2 Runaway Auto-Scaling Scale-Out ($580)",
-      accountId: accounts[0]?.account_id || "112233445566",
+      accountId: defaultAccId,
       service: "Amazon Elastic Compute Cloud - Compute",
       cost: 580.0,
       reason: "Flapping health check on ECS worker pool spawned 16 un-needed on-demand c5.2xlarge instances",

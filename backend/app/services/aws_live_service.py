@@ -216,20 +216,55 @@ class AWSLiveCostExplorerService:
         account_id: Optional[str] = None,
         access_key_id: Optional[str] = None,
         secret_access_key: Optional[str] = None,
+        session_token: Optional[str] = None,
         role_arn: Optional[str] = None,
+        external_id: Optional[str] = None,
         days: int = 30
     ) -> Dict[str, Any]:
         """
         Pulls real live records from AWS Cost Explorer API and stores them in OneSight database.
-        Replaces mock records for this tenant with real AWS records.
+        Credentials are encrypted at rest using AES-256 Fernet.
         """
-        verify = cls.verify_credentials(access_key_id, secret_access_key, role_arn=role_arn)
+        # If credentials were not passed in, attempt to load decrypted credentials from database
+        if not access_key_id and not role_arn and db:
+            account_query = db.query(AWSAccount).filter(AWSAccount.tenant_id == tenant_id)
+            if account_id and account_id != "ALL":
+                account_query = account_query.filter(AWSAccount.account_id == account_id)
+            stored_acc = account_query.first()
+            if stored_acc:
+                creds = stored_acc.get_decrypted_credentials()
+                access_key_id = creds.get("access_key_id")
+                secret_access_key = creds.get("secret_access_key")
+                session_token = creds.get("session_token")
+                external_id = creds.get("external_id")
+                if stored_acc.role_arn:
+                    role_arn = stored_acc.role_arn
+
+        verify = cls.verify_credentials(
+            access_key_id=access_key_id,
+            secret_access_key=secret_access_key,
+            session_token=session_token,
+            role_arn=role_arn,
+            external_id=external_id
+        )
         if not verify["success"]:
             return verify
 
-        real_account_id = verify.get("account_id") or account_id or "112233445566"
+        real_account_id = verify.get("account_id") or account_id
+        if not real_account_id or real_account_id == "UNKNOWN":
+            return {
+                "success": False,
+                "error_code": "UNKNOWN_ACCOUNT_ID",
+                "message": "Unable to determine AWS Account ID from credentials. Verify IAM permissions for sts:GetCallerIdentity."
+            }
 
-        client = cls.get_ce_client(access_key_id, secret_access_key, role_arn=role_arn)
+        client = cls.get_ce_client(
+            access_key_id=access_key_id,
+            secret_access_key=secret_access_key,
+            session_token=session_token,
+            role_arn=role_arn,
+            external_id=external_id
+        )
 
         end_dt = datetime.now(timezone.utc)
         start_dt = end_dt - timedelta(days=days)
@@ -249,7 +284,7 @@ class AWSLiveCostExplorerService:
             ]
         )
 
-        # 2. Clear old mock billing records for this tenant to reflect real AWS invoice
+        # 2. Clear old billing records for this tenant to reflect real AWS invoice
         db.query(BillingRecord).filter(
             BillingRecord.tenant_id == tenant_id,
             BillingRecord.provider == CloudProvider.AWS
@@ -291,7 +326,7 @@ class AWSLiveCostExplorerService:
                     db.add(rec)
                     synced_count += 1
 
-        # 3. Ensure AWSAccount record reflects the verified live account
+        # 3. Ensure AWSAccount record reflects the verified live account and encrypts credentials
         acc = db.query(AWSAccount).filter(
             AWSAccount.tenant_id == tenant_id,
             AWSAccount.account_id == real_account_id
@@ -301,17 +336,33 @@ class AWSLiveCostExplorerService:
             acc = AWSAccount(
                 tenant_id=tenant_id,
                 account_id=real_account_id,
-                account_name="AWS Live Primary Account",
+                account_name=f"AWS Primary Account ({real_account_id})",
                 account_type="MANAGEMENT",
                 default_region="us-east-1",
                 status="CONNECTED",
-                role_arn=role_arn
+                role_arn=role_arn,
+                auth_method="IAM_KEYS" if access_key_id else "STS_ROLE",
+                last_synced_at=datetime.now(timezone.utc)
+            )
+            acc.set_credentials(
+                access_key_id=access_key_id,
+                secret_access_key=secret_access_key,
+                session_token=session_token,
+                external_id=external_id
             )
             db.add(acc)
         else:
             acc.status = "CONNECTED"
+            acc.last_synced_at = datetime.now(timezone.utc)
             if role_arn:
                 acc.role_arn = role_arn
+            if access_key_id:
+                acc.set_credentials(
+                    access_key_id=access_key_id,
+                    secret_access_key=secret_access_key,
+                    session_token=session_token,
+                    external_id=external_id
+                )
 
         db.commit()
 
@@ -554,12 +605,18 @@ output "onesight_role_arn" {{
                             account_type="MANAGEMENT" if acc_id == customer_account_id else "MEMBER",
                             default_region="us-east-1",
                             status="CONNECTED" if acc_status == "ACTIVE" else "SUSPENDED",
-                            role_arn=role_arn
+                            role_arn=role_arn,
+                            auth_method="STS_ROLE",
+                            last_synced_at=datetime.now(timezone.utc)
                         )
+                        new_acc.set_credentials(external_id=external_id)
                         db.add(new_acc)
                     else:
                         existing_acc.status = "CONNECTED"
                         existing_acc.role_arn = role_arn
+                        existing_acc.auth_method = "STS_ROLE"
+                        existing_acc.last_synced_at = datetime.now(timezone.utc)
+                        existing_acc.set_credentials(external_id=external_id)
 
                     discovered_accounts.append({
                         "account_id": acc_id,
@@ -584,10 +641,19 @@ output "onesight_role_arn" {{
                     account_type="MANAGEMENT",
                     default_region="us-east-1",
                     status="CONNECTED",
-                    role_arn=role_arn
+                    role_arn=role_arn,
+                    auth_method="STS_ROLE",
+                    last_synced_at=datetime.now(timezone.utc)
                 )
+                acc.set_credentials(external_id=external_id)
                 db.add(acc)
-                db.commit()
+            else:
+                acc.status = "CONNECTED"
+                acc.role_arn = role_arn
+                acc.auth_method = "STS_ROLE"
+                acc.last_synced_at = datetime.now(timezone.utc)
+                acc.set_credentials(external_id=external_id)
+            db.commit()
             discovered_accounts.append({
                 "account_id": customer_account_id,
                 "account_name": f"AWS Primary Account ({customer_account_id})",

@@ -485,7 +485,7 @@ export function ConnectAWSModal({
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. 112233445566"
+                      placeholder="12-digit AWS Account ID"
                       value={targetAccountId}
                       onChange={(e) => {
                         const val = e.target.value.trim();
@@ -521,7 +521,7 @@ export function ConnectAWSModal({
                   </label>
                   <input
                     type="text"
-                    placeholder="arn:aws:iam::112233445566:role/OneSightCostOptimizerRole"
+                    placeholder="arn:aws:iam::<ACCOUNT_ID>:role/OneSightCostOptimizerRole"
                     value={stsRoleArn}
                     onChange={(e) => setStsRoleArn(e.target.value)}
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-800 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
