@@ -203,27 +203,27 @@ export function TopNavbar({
             className="flex items-center space-x-2 pl-2 cursor-pointer focus:outline-none"
           >
             <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-sm">
-              A
+              AWS
             </div>
             <div className="text-left hidden xl:block">
-              <span className="text-xs font-bold text-slate-800 block leading-tight">Adesh Singh</span>
-              <span className="text-[10px] text-slate-400 block leading-tight">Growth Plan</span>
+              <span className="text-xs font-bold text-slate-800 block leading-tight">AWS Admin</span>
+              <span className="text-[10px] text-slate-400 block leading-tight font-mono">476383094285</span>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden xl:block" />
           </button>
 
-          {/* Profile Dropdown Menu (Matching Image 4) */}
+          {/* Profile Dropdown Menu */}
           {profileOpen && (
             <div className="absolute top-11 right-0 w-64 bg-white border border-slate-200 rounded-2xl shadow-xl p-3 z-50 animate-in fade-in duration-150 text-xs">
               {/* Profile Card Header */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center space-x-2.5">
                   <div className="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm">
-                    A
+                    AWS
                   </div>
                   <div>
-                    <h5 className="font-bold text-slate-800">Adesh Singh</h5>
-                    <p className="text-[10px] text-slate-400 font-medium">BU: Bigoh</p>
+                    <h5 className="font-bold text-slate-800">AWS Live Administrator</h5>
+                    <p className="text-[10px] text-slate-400 font-mono">Account: 476383094285</p>
                   </div>
                 </div>
                 <button className="px-2.5 py-1 text-[11px] font-semibold border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">

@@ -2,7 +2,9 @@ import sys
 import unittest
 sys.path.insert(0, "backend")
 
-from app.core.database import SessionLocal, Base, engine
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from app.core.database import Base
 from app.services.cloud_simulator import seed_multitenant_aws_data
 from app.api.billing import list_tenants, list_aws_accounts, get_aws_kpi, query_cost_explorer, get_idle_resources
 from app.api.anomalies import list_anomalies, get_anomaly_details, trigger_detection
@@ -12,9 +14,12 @@ from app.api.agents import chat_with_agent, remediate_idle_resource, ChatRequest
 class TestOneSightMultiTenantAWS(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        Base.metadata.create_all(bind=engine)
-        cls.db = SessionLocal()
-        # Seed multi-tenant AWS data
+        # Use isolated in-memory database so production onesight.db is never touched
+        cls.test_engine = create_engine("sqlite:///:memory:")
+        TestSession = sessionmaker(bind=cls.test_engine)
+        Base.metadata.create_all(bind=cls.test_engine)
+        cls.db = TestSession()
+        # Seed multi-tenant AWS data in test memory
         seed_multitenant_aws_data(cls.db, days=30)
         # Run detection
         trigger_detection(tenant_id="tenant-acme", db=cls.db)

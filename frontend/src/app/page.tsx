@@ -31,34 +31,13 @@ import { Loader2, AlertCircle } from "lucide-react";
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState("home");
 
-  // Multi-tenant Organization State
+  // Multi-tenant Organization State (100% Real AWS)
   const [tenants, setTenants] = useState<TenantItem[]>([
     {
       id: "tenant-acme",
-      name: "APS Team",
-      slug: "aps-team",
+      name: "AWS Account (476383094285)",
+      slug: "aws-476383094285",
       plan: "ENTERPRISE",
-      aws_accounts: [],
-    },
-    {
-      id: "tenant-fintech",
-      name: "Azure Prod Team",
-      slug: "azure-prod",
-      plan: "PRO",
-      aws_accounts: [],
-    },
-    {
-      id: "tenant-gcp",
-      name: "GCP Dev Team",
-      slug: "gcp-dev",
-      plan: "ENTERPRISE",
-      aws_accounts: [],
-    },
-    {
-      id: "tenant-digitalocean",
-      name: "DigitalOcean Des Team",
-      slug: "do-des",
-      plan: "GROWTH",
       aws_accounts: [],
     },
   ]);

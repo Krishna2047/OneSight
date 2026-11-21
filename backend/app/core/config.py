@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = f"sqlite:///{_DEFAULT_DB_PATH}"
     
     # Cloud Simulation / Mock Mode
-    MOCK_CLOUD_ENABLED: bool = True
+    MOCK_CLOUD_ENABLED: bool = False
     
     # Live Cloud Credentials (optional)
     AWS_ACCESS_KEY_ID: Optional[str] = None

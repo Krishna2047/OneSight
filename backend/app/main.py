@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         tenant_count = db.query(Tenant).count()
-        if tenant_count == 0:
+        if settings.MOCK_CLOUD_ENABLED and tenant_count == 0:
             logger.info("Seeding multi-tenant organizations and granular AWS Cost Explorer records...")
             seed_multitenant_aws_data(db, days=30)
             
