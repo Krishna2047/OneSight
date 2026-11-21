@@ -362,7 +362,7 @@ export function AWSCostExplorer({
           <div>
             <h4 className="text-sm font-bold text-slate-900">Cost & Usage Breakdown</h4>
             <p className="text-xs text-slate-500 mt-0.5">
-              Detailed period-over-period variance analysis and percentage share of total AWS invoice
+              Live AWS Cost Explorer invoice totals, service share, and period-over-period variance analysis
             </p>
           </div>
 
@@ -385,11 +385,11 @@ export function AWSCostExplorer({
             <thead className="bg-slate-50/80 text-slate-500 font-semibold border-b border-slate-200 uppercase tracking-wider">
               <tr>
                 <th className="py-3 px-5">Dimension Name</th>
-                <th className="py-3 px-5 text-right">Current Spend</th>
-                <th className="py-3 px-5 text-right">Prior Spend</th>
-                <th className="py-3 px-5 text-right">Variance ($)</th>
-                <th className="py-3 px-5 text-right">Variance (%)</th>
+                <th className="py-3 px-5 text-right font-bold text-slate-800">Total Spend ({days}d)</th>
                 <th className="py-3 px-5 text-right">Share (%)</th>
+                <th className="py-3 px-5 text-right">Recent 15d</th>
+                <th className="py-3 px-5 text-right">Prior 15d</th>
+                <th className="py-3 px-5 text-right">Period Variance</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -411,32 +411,28 @@ export function AWSCostExplorer({
                         />
                         <span className="truncate max-w-[260px]">{row.dimension_name}</span>
                       </td>
-                      <td className="py-3.5 px-5 text-right font-mono font-bold text-slate-900">
+                      <td className="py-3.5 px-5 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30">
+                        ${row.total_spend.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3.5 px-5 text-right font-mono font-semibold text-slate-700">
+                        {row.percentage_of_total.toFixed(1)}%
+                      </td>
+                      <td className="py-3.5 px-5 text-right font-mono text-slate-700">
                         ${row.current_period_spend.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </td>
                       <td className="py-3.5 px-5 text-right font-mono text-slate-500">
                         ${row.prior_period_spend.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </td>
-                      <td
-                        className={`py-3.5 px-5 text-right font-mono font-semibold ${
-                          isPositive ? "text-rose-600" : "text-emerald-600"
-                        }`}
-                      >
-                        {isPositive ? "+" : "-"}${Math.abs(row.variance_amount).toFixed(2)}
-                      </td>
                       <td className="py-3.5 px-5 text-right">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono ${
                             isPositive
                               ? "bg-rose-50 text-rose-700 border border-rose-200"
                               : "bg-emerald-50 text-emerald-700 border border-emerald-200"
                           }`}
                         >
-                          {row.variance_percent > 0 ? `+${row.variance_percent}%` : `${row.variance_percent}%`}
+                          {isPositive ? "+" : "-"}${Math.abs(row.variance_amount).toFixed(2)} ({row.variance_percent > 0 ? `+${row.variance_percent}%` : `${row.variance_percent}%`})
                         </span>
-                      </td>
-                      <td className="py-3.5 px-5 text-right font-mono text-slate-700">
-                        {row.percentage_of_total.toFixed(1)}%
                       </td>
                     </tr>
                   );
