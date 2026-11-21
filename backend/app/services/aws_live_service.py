@@ -282,11 +282,10 @@ class AWSLiveCostExplorerService:
                         cost=cost_val,
                         currency="USD",
                         region="us-east-1",
-                        usage_quantity=usage_qty,
-                        unit="Units",
-                        billing_period_start=record_dt,
-                        billing_period_end=record_dt + timedelta(days=1),
-                        recorded_at=record_dt,
+                        usage_amount=usage_qty,
+                        usage_unit="Units",
+                        record_date=date_str,
+                        timestamp=record_dt,
                         tags={"Source": "Live-AWS-CostExplorer", "SyncDate": datetime.now(timezone.utc).isoformat()}
                     )
                     db.add(rec)
