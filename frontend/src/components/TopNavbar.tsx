@@ -27,6 +27,7 @@ interface TopNavbarProps {
   selectedAccountId: string;
   onAccountChange: (accountId: string) => void;
   onSimulateSpike: () => void;
+  onOpenConnectAWS?: () => void;
 }
 
 export function TopNavbar({
@@ -37,6 +38,7 @@ export function TopNavbar({
   selectedAccountId,
   onAccountChange,
   onSimulateSpike,
+  onOpenConnectAWS,
 }: TopNavbarProps) {
   const [orgOpen, setOrgOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -135,6 +137,18 @@ export function TopNavbar({
 
       {/* Right: Account filter, Date Picker, Help, Bell, User Profile */}
       <div className="flex items-center space-x-3">
+        {/* Connect Real AWS Button */}
+        {onOpenConnectAWS && (
+          <button
+            onClick={onOpenConnectAWS}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-300/80 text-xs font-bold transition-all shadow-xs"
+            title="Connect Live AWS Cost Explorer"
+          >
+            <Cloud className="w-3.5 h-3.5 text-amber-600" />
+            <span>Connect Real AWS</span>
+          </button>
+        )}
+
         {/* Simulate Spike Button */}
         <button
           onClick={onSimulateSpike}

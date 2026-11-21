@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     
     # Default Notification Webhooks (can also be configured via UI)
     DEFAULT_SLACK_WEBHOOK: Optional[str] = None
+    DEFAULT_TEAMS_WEBHOOK: Optional[str] = None
     DEFAULT_DISCORD_WEBHOOK: Optional[str] = None
     DEFAULT_GENERIC_WEBHOOK: Optional[str] = None
     DEFAULT_ALERT_EMAIL: Optional[str] = None

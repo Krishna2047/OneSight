@@ -79,6 +79,34 @@ export const api = {
   seedData: (days: number = 30) =>
     fetchJson<any>(`/billing/seed?days=${days}`, "tenant-acme", { method: "POST" }),
 
+  // Real Live AWS Cost Explorer Endpoints
+  getAWSLiveStatus: (tenantId: string) =>
+    fetchJson<{
+      is_connected: boolean;
+      account_id?: string;
+      verification: any;
+      live_records_count: number;
+      env_credentials_present: boolean;
+    }>("/billing/aws/live-status", tenantId),
+  connectAWSCredentials: (
+    tenantId: string,
+    payload: {
+      access_key_id: string;
+      secret_access_key: string;
+      session_token?: string;
+      region?: string;
+      role_arn?: string;
+      sync_immediately?: boolean;
+      days?: number;
+    }
+  ) =>
+    fetchJson<any>("/billing/aws/connect-credentials", tenantId, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  syncLiveAWS: (tenantId: string, days: number = 30) =>
+    fetchJson<any>(`/billing/aws/sync-live?days=${days}`, tenantId, { method: "POST" }),
+
   // AWS Cost Anomalies & AI RCA
   getAnomalies: (
     tenantId: string,

@@ -36,6 +36,7 @@ interface AWSCostExplorerProps {
   days: number;
   onDaysChange: (newDays: number) => void;
   isLoading: boolean;
+  onConnectRealAWS?: () => void;
 }
 
 // Canonical AWS Cost Explorer dimension color palette
@@ -57,6 +58,7 @@ export function AWSCostExplorer({
   days,
   onDaysChange,
   isLoading,
+  onConnectRealAWS,
 }: AWSCostExplorerProps) {
   const [chartType, setChartType] = useState<"stacked_bar" | "stacked_area" | "line">("stacked_bar");
   const [searchTable, setSearchTable] = useState("");
@@ -138,6 +140,17 @@ export function AWSCostExplorer({
 
           {/* Right Toolbar Controls: Time Range & Chart Mode */}
           <div className="flex flex-wrap items-center gap-2.5">
+            {onConnectRealAWS && (
+              <button
+                onClick={onConnectRealAWS}
+                className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-300 text-xs font-bold flex items-center space-x-1.5 shadow-xs transition-colors"
+                title="Connect Real AWS Credentials"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                <span>Live AWS API</span>
+              </button>
+            )}
+
             {/* Time Range Pills */}
             <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200/80 text-xs">
               {[

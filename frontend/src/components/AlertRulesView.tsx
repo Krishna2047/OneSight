@@ -43,7 +43,7 @@ export function AlertRulesView({ rules, history, onRefresh, tenantId = "tenant-a
     threshold_value: 35.0,
     provider: "AWS",
     severity: "WARNING",
-    channels: ["SLACK", "DISCORD"],
+    channels: ["SLACK", "TEAMS", "DISCORD"],
   });
 
   const handleCreateRule = async (e: React.FormEvent) => {
@@ -190,7 +190,15 @@ export function AlertRulesView({ rules, history, onRefresh, tenantId = "tenant-a
                 {rule.channels.map((ch) => (
                   <span
                     key={ch}
-                    className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold"
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                      ch === "TEAMS"
+                        ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                        : ch === "SLACK"
+                        ? "bg-slate-100 text-slate-800 border-slate-200"
+                        : ch === "DISCORD"
+                        ? "bg-blue-50 text-blue-700 border-blue-200"
+                        : "bg-slate-100 text-slate-700 border-slate-200"
+                    }`}
                   >
                     {ch}
                   </span>
@@ -304,6 +312,7 @@ export function AlertRulesView({ rules, history, onRefresh, tenantId = "tenant-a
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                 >
                   <option value="SLACK">Slack (Block Kit)</option>
+                  <option value="TEAMS">Microsoft Teams (Adaptive Cards)</option>
                   <option value="DISCORD">Discord (Rich Embed)</option>
                   <option value="EMAIL">Email (HTML Digest)</option>
                   <option value="WEBHOOK">Generic Webhook (PagerDuty / Opsgenie)</option>

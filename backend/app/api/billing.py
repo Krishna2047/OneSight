@@ -1,14 +1,29 @@
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, Depends, Query, Header
+import os
+from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Query, Header, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.core.database import get_db
+from app.core.config import settings
 from app.models.tenant import Tenant, AWSAccount
 from app.models.billing import BillingRecord, IdleResource, CloudProvider
 from app.services.cloud_simulator import seed_multitenant_aws_data
 from app.services.aws_cost_explorer import AWSCostExplorerService
+from app.services.aws_live_service import AWSLiveCostExplorerService
 
 router = APIRouter(prefix="/billing", tags=["AWS Billing & Cost Explorer"])
+
+class AWSConnectCredentialsRequest(BaseModel):
+    account_id: Optional[str] = None
+    account_name: Optional[str] = "AWS Production Account"
+    access_key_id: str
+    secret_access_key: str
+    session_token: Optional[str] = None
+    region: str = "us-east-1"
+    role_arn: Optional[str] = None
+    sync_immediately: bool = True
+    days: int = 30
 
 def get_tenant_id(x_tenant_id: Optional[str] = Header("tenant-acme")) -> str:
     return x_tenant_id or "tenant-acme"
@@ -283,3 +298,91 @@ def seed_billing_data(
         "message": f"Successfully seeded {count} granular AWS Cost Explorer records across multiple tenants.",
         "records_count": count
     }
+
+@router.get("/aws/live-status")
+def get_aws_live_status(
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Checks if real AWS credentials are configured and reachable.
+    """
+    verification = AWSLiveCostExplorerService.verify_credentials()
+
+    live_records_count = db.query(BillingRecord).filter(
+        BillingRecord.tenant_id == tenant_id,
+        BillingRecord.provider == CloudProvider.AWS
+    ).count()
+
+    return {
+        "is_connected": verification["success"],
+        "account_id": verification.get("account_id"),
+        "verification": verification,
+        "live_records_count": live_records_count,
+        "env_credentials_present": bool(os.environ.get("AWS_ACCESS_KEY_ID") or settings.AWS_ACCESS_KEY_ID)
+    }
+
+@router.post("/aws/connect-credentials")
+def connect_aws_credentials(
+    req: AWSConnectCredentialsRequest,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Verifies live AWS credentials against AWS Cost Explorer API,
+    persists them in environment / session, and optionally syncs real live data.
+    """
+    verify = AWSLiveCostExplorerService.verify_credentials(
+        access_key_id=req.access_key_id,
+        secret_access_key=req.secret_access_key,
+        session_token=req.session_token,
+        region=req.region,
+        role_arn=req.role_arn
+    )
+    if not verify["success"]:
+        return {
+            "status": "FAILED",
+            "message": verify["message"],
+            "error_code": verify.get("error_code")
+        }
+
+    os.environ["AWS_ACCESS_KEY_ID"] = req.access_key_id
+    os.environ["AWS_SECRET_ACCESS_KEY"] = req.secret_access_key
+    if req.session_token:
+        os.environ["AWS_SESSION_TOKEN"] = req.session_token
+    os.environ["AWS_DEFAULT_REGION"] = req.region
+
+    sync_result = {}
+    if req.sync_immediately:
+        sync_result = AWSLiveCostExplorerService.sync_live_aws_to_database(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=verify.get("account_id") or req.account_id,
+            access_key_id=req.access_key_id,
+            secret_access_key=req.secret_access_key,
+            role_arn=req.role_arn,
+            days=req.days
+        )
+
+    return {
+        "status": "SUCCESS",
+        "message": "Real AWS Cost Explorer credentials connected successfully!",
+        "account_id": verify.get("account_id"),
+        "sync_result": sync_result
+    }
+
+@router.post("/aws/sync-live")
+def sync_live_aws(
+    days: int = Query(30, ge=7, le=90),
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Triggers an on-demand live pull from AWS Cost Explorer API.
+    """
+    res = AWSLiveCostExplorerService.sync_live_aws_to_database(
+        db=db,
+        tenant_id=tenant_id,
+        days=days
+    )
+    return res

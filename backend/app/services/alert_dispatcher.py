@@ -217,6 +217,64 @@ class AlertDispatcher:
         }
 
     @classmethod
+    def send_teams(cls, webhook_url: Optional[str], payload_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Formats and sends a Microsoft Teams Adaptive Card / Connector MessageCard."""
+        severity = payload_data.get("severity", "WARNING")
+        title = payload_data.get("title", "OneSight Cloud Cost Alert")
+        message = payload_data.get("message", "")
+        provider = payload_data.get("provider", "AWS")
+        service = payload_data.get("service", "N/A")
+        cost_delta = payload_data.get("cost_delta", 0.0)
+        pct_deviation = payload_data.get("pct_deviation", 0.0)
+        theme_color = "EF4444" if severity == "CRITICAL" else ("F59E0B" if severity in ["WARNING", "HIGH"] else "4F46E5")
+
+        teams_body = {
+            "@type": "MessageCard",
+            "@context": "http://schema.org/extensions",
+            "themeColor": theme_color,
+            "summary": f"OneSight Alert: {title}",
+            "sections": [
+                {
+                    "activityTitle": f"🚨 **OneSight FinOps Alert:** {title}",
+                    "activitySubtitle": f"Provider: **{provider}** | Service: `{service}` | Severity: **{severity}**",
+                    "facts": [
+                        {"name": "Cost Impact Delta:", "value": f"+${cost_delta:,.2f}"},
+                        {"name": "Spike Deviation:", "value": f"+{pct_deviation:.1f}%"},
+                        {"name": "Triggered At:", "value": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")},
+                        {"name": "Platform:", "value": "OneSight Agentic FinOps"}
+                    ],
+                    "text": message,
+                    "markdown": True
+                }
+            ],
+            "potentialAction": [
+                {
+                    "@type": "OpenUri",
+                    "name": "Inspect in OneSight",
+                    "targets": [{"os": "default", "uri": "http://localhost:3000"}]
+                }
+            ]
+        }
+
+        target_url = webhook_url or getattr(settings, "DEFAULT_TEAMS_WEBHOOK", None)
+        if target_url and target_url.startswith("http"):
+            try:
+                with httpx.Client(timeout=10.0) as client:
+                    resp = client.post(target_url, json=teams_body)
+                    resp.raise_for_status()
+                    return {"status": "SENT", "channel": "TEAMS", "details": resp.text, "payload": teams_body}
+            except Exception as e:
+                logger.error(f"Teams webhook failed: {e}")
+                return {"status": "FAILED", "channel": "TEAMS", "error": str(e), "payload": teams_body}
+
+        return {
+            "status": "SIMULATED",
+            "channel": "TEAMS",
+            "note": "Simulated Microsoft Teams Adaptive Card dispatch (configure live webhook to post to real Teams channel)",
+            "payload": teams_body
+        }
+
+    @classmethod
     def dispatch_all(
         cls,
         db: Session,
@@ -236,6 +294,8 @@ class AlertDispatcher:
 
             if ch_upper == "SLACK":
                 result = cls.send_slack(webhook_override, payload_data)
+            elif ch_upper in ["TEAMS", "MS_TEAMS", "MICROSOFT_TEAMS"]:
+                result = cls.send_teams(webhook_override, payload_data)
             elif ch_upper == "DISCORD":
                 result = cls.send_discord(webhook_override, payload_data)
             elif ch_upper == "WEBHOOK":

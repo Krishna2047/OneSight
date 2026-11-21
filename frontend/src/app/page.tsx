@@ -13,6 +13,7 @@ import { AlertRulesView } from "@/components/AlertRulesView";
 import { AgentChatConsole } from "@/components/AgentChatConsole";
 import { IdleResourcesModal } from "@/components/IdleResourcesModal";
 import { SimulateSpikeModal } from "@/components/SimulateSpikeModal";
+import { ConnectAWSModal } from "@/components/ConnectAWSModal";
 import { api } from "@/lib/api";
 import {
   TenantItem,
@@ -84,6 +85,7 @@ export default function HomePage() {
 
   const [selectedAnomaly, setSelectedAnomaly] = useState<AnomalyItem | null>(null);
   const [isSimulateModalOpen, setIsSimulateModalOpen] = useState(false);
+  const [isConnectAWSModalOpen, setIsConnectAWSModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -195,6 +197,7 @@ export default function HomePage() {
           selectedAccountId={selectedAccountId}
           onAccountChange={setSelectedAccountId}
           onSimulateSpike={() => setIsSimulateModalOpen(true)}
+          onOpenConnectAWS={() => setIsConnectAWSModalOpen(true)}
         />
 
         {/* Canvas Body */}
@@ -255,6 +258,7 @@ export default function HomePage() {
                     days={days}
                     onDaysChange={setDays}
                     isLoading={isLoading}
+                    onConnectRealAWS={() => setIsConnectAWSModalOpen(true)}
                   />
                 </div>
               )}
@@ -348,6 +352,14 @@ export default function HomePage() {
         onSuccess={loadData}
         tenantId={currentTenantId}
         accounts={accounts}
+      />
+
+      {/* Real AWS Cost Explorer Connection Modal */}
+      <ConnectAWSModal
+        isOpen={isConnectAWSModalOpen}
+        onClose={() => setIsConnectAWSModalOpen(false)}
+        onSuccess={loadData}
+        tenantId={currentTenantId}
       />
     </div>
   );
