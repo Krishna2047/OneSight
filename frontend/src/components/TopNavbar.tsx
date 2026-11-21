@@ -18,6 +18,7 @@ import {
   LogOut,
   Zap,
   Shield,
+  RefreshCw,
 } from "lucide-react";
 
 interface TopNavbarProps {
@@ -29,6 +30,8 @@ interface TopNavbarProps {
   onAccountChange: (accountId: string) => void;
   onSimulateSpike: () => void;
   onOpenConnectAWS?: () => void;
+  onSyncBill?: () => void;
+  isSyncing?: boolean;
 }
 
 export function TopNavbar({
@@ -40,6 +43,8 @@ export function TopNavbar({
   onAccountChange,
   onSimulateSpike,
   onOpenConnectAWS,
+  onSyncBill,
+  isSyncing = false,
 }: TopNavbarProps) {
   const [orgOpen, setOrgOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -145,6 +150,19 @@ export function TopNavbar({
           >
             <Shield className="w-3.5 h-3.5 text-indigo-600" />
             <span>1-Click AWS Onboarding</span>
+          </button>
+        )}
+
+        {/* Sync Latest Bill Button */}
+        {onSyncBill && (
+          <button
+            onClick={onSyncBill}
+            disabled={isSyncing}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-semibold transition-all disabled:opacity-50"
+            title="Sync latest daily bill from AWS Cost Explorer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${isSyncing ? "animate-spin" : ""}`} />
+            <span>{isSyncing ? "Syncing..." : "Sync AWS Bill"}</span>
           </button>
         )}
 

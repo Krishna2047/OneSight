@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import asyncio
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -12,6 +13,7 @@ from app.models.tenant import Tenant, AWSAccount
 from app.models.billing import BillingRecord, CloudProvider
 from app.services.detector import detect_anomalies
 from app.services.agent_runtime import AgenticFinOpsEngine
+from app.services.aws_live_service import AWSLiveCostExplorerService
 from app.api.billing import router as billing_router
 from app.api.anomalies import router as anomalies_router
 from app.api.alerts import router as alerts_router
@@ -19,6 +21,38 @@ from app.api.agents import router as agents_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("onesight")
+
+async def scheduled_daily_aws_sync():
+    """
+    Automated background FinOps worker:
+    Runs periodically (every 6 hours) to pull updated daily spend from AWS Cost Explorer,
+    decrypt credentials at rest, refresh local telemetry, and trigger anomaly checks.
+    """
+    while True:
+        try:
+            await asyncio.sleep(6 * 3600)  # Every 6 hours
+            logger.info("Executing scheduled periodic AWS Cost Explorer sync...")
+            db = SessionLocal()
+            try:
+                accounts = db.query(AWSAccount).filter(AWSAccount.status == "CONNECTED").all()
+                for acc in accounts:
+                    try:
+                        logger.info(f"Auto-syncing spend for account {acc.account_id}...")
+                        AWSLiveCostExplorerService.sync_live_aws_to_database(
+                            db=db,
+                            tenant_id=acc.tenant_id,
+                            account_id=acc.account_id,
+                            days=30
+                        )
+                        detect_anomalies(db, tenant_id=acc.tenant_id)
+                    except Exception as acc_err:
+                        logger.warning(f"Background sync warning for account {acc.account_id}: {acc_err}")
+            finally:
+                db.close()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Error in background sync worker: {e}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -116,7 +150,10 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
+    # Start background scheduled sync
+    sync_task = asyncio.create_task(scheduled_daily_aws_sync())
     yield
+    sync_task.cancel()
     logger.info("OneSight Backend shutting down.")
 
 app = FastAPI(

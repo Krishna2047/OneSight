@@ -65,6 +65,7 @@ export default function HomePage() {
   const [selectedAnomaly, setSelectedAnomaly] = useState<AnomalyItem | null>(null);
   const [isSimulateModalOpen, setIsSimulateModalOpen] = useState(false);
   const [isConnectAWSModalOpen, setIsConnectAWSModalOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -157,6 +158,18 @@ export default function HomePage() {
     }
   };
 
+  const handleSyncBill = async () => {
+    setIsSyncing(true);
+    try {
+      await api.syncLiveAWS(currentTenantId, days);
+      await loadData();
+    } catch (e: any) {
+      alert("Failed to sync bill: " + (e.message || "Network error"));
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex bg-[#f4f6fa] text-slate-800 antialiased font-sans">
       {/* 1. Left Sidebar Navigation (Matching Image 5) */}
@@ -177,6 +190,8 @@ export default function HomePage() {
           onAccountChange={setSelectedAccountId}
           onSimulateSpike={() => setIsSimulateModalOpen(true)}
           onOpenConnectAWS={() => setIsConnectAWSModalOpen(true)}
+          onSyncBill={handleSyncBill}
+          isSyncing={isSyncing}
         />
 
         {/* Canvas Body */}
