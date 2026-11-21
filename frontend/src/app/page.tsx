@@ -26,7 +26,7 @@ import {
   AlertHistoryItem,
   IdleResourceItem,
 } from "@/types";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, Check, Shield } from "lucide-react";
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState("home");
@@ -66,6 +66,10 @@ export default function HomePage() {
   const [isSimulateModalOpen, setIsSimulateModalOpen] = useState(false);
   const [isConnectAWSModalOpen, setIsConnectAWSModalOpen] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncNotification, setSyncNotification] = useState<{
+    type: "success" | "error" | "info";
+    message: string;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -160,18 +164,70 @@ export default function HomePage() {
 
   const handleSyncBill = async () => {
     setIsSyncing(true);
+    setSyncNotification(null);
     try {
-      await api.syncLiveAWS(currentTenantId, days);
-      await loadData();
+      const res = await api.syncLiveAWS(currentTenantId, days);
+      if (res && res.success !== false) {
+        setSyncNotification({
+          type: "success",
+          message: `Successfully synchronized ${res.records_synced || 0} live AWS Cost Explorer records ($${Number(res.total_spend || 0).toLocaleString()} USD).`,
+        });
+        await loadData();
+      } else {
+        const errorMsg = res?.message || "Failed to sync AWS Cost Explorer billing.";
+        if (errorMsg.includes("No AWS credentials") || errorMsg.includes("NO_CREDENTIALS")) {
+          setSyncNotification({
+            type: "info",
+            message: "No live AWS credentials or STS role connected yet. Opening 1-Click AWS Onboarding...",
+          });
+          setTimeout(() => setIsConnectAWSModalOpen(true), 1200);
+        } else {
+          setSyncNotification({
+            type: "error",
+            message: errorMsg,
+          });
+        }
+      }
     } catch (e: any) {
-      alert("Failed to sync bill: " + (e.message || "Network error"));
+      const msg = e.message || "Failed to connect to OneSight backend.";
+      if (msg.includes("No AWS credentials") || msg.includes("NO_CREDENTIALS") || msg.includes("400")) {
+        setSyncNotification({
+          type: "info",
+          message: "No live AWS credentials or STS role configured yet. Opening 1-Click AWS Onboarding...",
+        });
+        setTimeout(() => setIsConnectAWSModalOpen(true), 1200);
+      } else {
+        setSyncNotification({
+          type: "error",
+          message: msg,
+        });
+      }
     } finally {
       setIsSyncing(false);
+      setTimeout(() => setSyncNotification(null), 7000);
     }
   };
 
   return (
     <div className="min-h-screen flex bg-[#f4f6fa] text-slate-800 antialiased font-sans">
+      {/* Toast Notification */}
+      {syncNotification && (
+        <div
+          className={`fixed top-20 right-6 z-50 flex items-center space-x-2.5 px-4 py-3 rounded-2xl shadow-2xl text-xs font-semibold animate-in fade-in slide-in-from-top-4 duration-200 border ${
+            syncNotification.type === "success"
+              ? "bg-emerald-600 text-white border-emerald-500"
+              : syncNotification.type === "info"
+              ? "bg-indigo-600 text-white border-indigo-500"
+              : "bg-red-600 text-white border-red-500"
+          }`}
+        >
+          {syncNotification.type === "success" && <Check className="w-4 h-4 text-emerald-100 shrink-0" />}
+          {syncNotification.type === "info" && <Shield className="w-4 h-4 text-indigo-100 shrink-0" />}
+          {syncNotification.type === "error" && <AlertCircle className="w-4 h-4 text-red-100 shrink-0" />}
+          <span className="max-w-md">{syncNotification.message}</span>
+        </div>
+      )}
+
       {/* 1. Left Sidebar Navigation (Matching Image 5) */}
       <Sidebar
         activeTab={activeTab}

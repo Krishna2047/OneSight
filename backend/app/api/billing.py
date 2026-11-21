@@ -421,6 +421,11 @@ def sync_live_aws(
         tenant_id=tenant_id,
         days=days
     )
+    if not res.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=res.get("message", "Failed to sync AWS Cost Explorer billing.")
+        )
     return res
 
 @router.get("/aws/onboarding-template")
