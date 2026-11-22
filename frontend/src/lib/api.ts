@@ -187,9 +187,21 @@ export const api = {
 
   // Agentic AI Endpoints
   chatWithAgent: (tenantId: string, message: string) =>
-    fetchJson<{ reply: string; tools: string[]; thoughts: string }>("/agents/chat", tenantId, {
+    fetchJson<{ reply: string; tools: string[]; thoughts: string; proposal?: any; executed_commands?: any[] }>(
+      "/agents/chat",
+      tenantId,
+      {
+        method: "POST",
+        body: JSON.stringify({ message }),
+      }
+    ),
+  approveProposal: (
+    tenantId: string,
+    payload: { proposal_id: string; action: string; resource_id: string; resource_name?: string; monthly_savings?: number }
+  ) =>
+    fetchJson<any>("/agents/approve-proposal", tenantId, {
       method: "POST",
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(payload),
     }),
   remediateIdle: (tenantId: string, resourceId: string, action: string = "SNAPSHOT_AND_DELETE") =>
     fetchJson<any>("/agents/remediate-idle", tenantId, {

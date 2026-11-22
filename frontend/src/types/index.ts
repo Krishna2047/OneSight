@@ -180,11 +180,35 @@ export interface AlertHistoryItem {
   response_payload?: any;
 }
 
+export interface AgentActionProposal {
+  proposal_id?: string;
+  resource_id: string;
+  resource_name?: string;
+  resource_type?: string;
+  action: string;
+  monthly_savings?: number;
+  safety_notes?: string;
+  exempted?: boolean;
+  exemption_reason?: string;
+  status?: "PENDING" | "APPROVED" | "REMEDIATED" | "EXEMPTED" | "REJECTED";
+}
+
+export interface ExecutedCommandEntry {
+  command: string;
+  status: string;
+  latency_ms?: number;
+  output?: string;
+  error?: string;
+  truncated?: boolean;
+}
+
 export interface AgentChatMessage {
   id: string;
   sender: "user" | "agent";
   text: string;
   timestamp: string;
-  tools?: string[];
+  tools?: any[];
   thoughts?: string;
+  proposal?: AgentActionProposal | null;
+  executed_commands?: ExecutedCommandEntry[];
 }

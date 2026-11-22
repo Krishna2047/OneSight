@@ -8,6 +8,7 @@ Welcome to the central documentation hub for **OneSight** (styled as *Costimizer
 
 | Document | Purpose & Description | Target Reader |
 | :--- | :--- | :--- |
+| **[POWERFUL_AI_AGENT_IMPLEMENTATION.md](./POWERFUL_AI_AGENT_IMPLEMENTATION.md)** | **Powerful AI Agent Implementation Blueprint.** Comprehensive guide to the LangGraph ReAct engine, AWS Read-Only Command Runner, the 4 Guardrails, Mem0 memory, and HITL proposal cards. | AI Agents, FinOps Engineers & Architects |
 | **[AUTONOMOUS_AWS_CLI_AGENT.md](./AUTONOMOUS_AWS_CLI_AGENT.md)** | **Autonomous Read-Only AWS CLI & Boto3 Agent Specification.** Details the iterative ReAct execution loop, IAM `ReadOnlyAccess` boundary, and the 4 essential safety guardrails. | AI Agents, Security & FinOps Engineers |
 | **[LANGGRAPH_AGENT_PLAN.md](./LANGGRAPH_AGENT_PLAN.md)** | **Autonomous Multi-Agent Swarm Blueprint.** Details the LangGraph cyclic state machine (`FinOpsAgentState`), 6 specialist nodes, and Human-in-the-Loop (HITL) approval workflows. | AI Agents & FinOps Architects |
 | **[GETTING_STARTED.md](./GETTING_STARTED.md)** | **Complete Setup & Run Guide.** Step-by-step instructions for running via Docker Compose (`docker compose up -d`), local hybrid dev, Mem0 CLI, and Ollama configuration. | All Developers & Operators |

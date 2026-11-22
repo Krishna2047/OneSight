@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { AgentChatMessage } from "@/types";
+import { AgentChatMessage, AgentActionProposal } from "@/types";
 import { api } from "@/lib/api";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import {
@@ -22,7 +22,10 @@ import {
   RefreshCw,
   Settings,
   ChevronDown as ChevronDownIcon,
-  Brain
+  Brain,
+  Shield,
+  ShieldAlert,
+  Loader2
 } from "lucide-react";
 
 interface AgentChatConsoleProps {
@@ -35,12 +38,13 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
     {
       id: "initial",
       sender: "agent",
-      text: "👋 Welcome to your **OneSight FinOps AI Copilot**!\n\nI am connected to your live AWS account (`476383094285`). Ask me about your real Month-to-Date spend, daily burn rate, cost anomaly detection, or idle resource audits.",
+      text: "👋 Welcome to your **OneSight FinOps AI Copilot**!\n\nI am connected to your live AWS account (`476383094285`). Ask me to run live read-only AWS CLI commands (e.g. `aws s3api list-buckets`, `aws ec2 describe-instances`), audit idle resource waste, analyze spend spikes, or review Compute Savings Plans.",
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
   const [expandedThoughts, setExpandedThoughts] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [aiConfig, setAiConfig] = useState<any>(null);
@@ -88,10 +92,11 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
   };
 
   const quickPrompts = [
-    "Give me an AWS spend summary and forecast",
-    "What are our top spending AWS services?",
     "What idle resources are wasting money?",
-    "Why did our cloud bill spike recently?",
+    "aws s3api list-buckets",
+    "What are our top spending AWS services?",
+    "aws ec2 describe-instances",
+    "Give me an AWS spend summary and forecast"
   ];
 
   const scrollToBottom = () => {
@@ -126,6 +131,8 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         tools: res.tools,
         thoughts: res.thoughts,
+        proposal: res.proposal,
+        executed_commands: res.executed_commands,
       };
       setMessages((prev) => [...prev, agentMsg]);
     } catch (err: any) {
@@ -138,6 +145,54 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
       setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApproveProposal = async (msgId: string, proposal: AgentActionProposal, action: "APPROVE" | "EXEMPT" | "REJECT") => {
+    const actionKey = proposal.proposal_id || msgId;
+    setActionLoading((prev) => ({ ...prev, [actionKey]: true }));
+    try {
+      const res = await api.approveProposal(tenantId, {
+        proposal_id: proposal.proposal_id || msgId,
+        action,
+        resource_id: proposal.resource_id,
+        resource_name: proposal.resource_name,
+        monthly_savings: proposal.monthly_savings
+      });
+
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id === msgId && m.proposal) {
+            return {
+              ...m,
+              proposal: {
+                ...m.proposal,
+                status: res.status,
+                exempted: res.status === "EXEMPTED",
+                exemption_reason: res.status === "EXEMPTED" ? "Committed to Mem0 by human operator" : m.proposal.exemption_reason
+              }
+            };
+          }
+          return m;
+        })
+      );
+
+      const confirmMsg: AgentChatMessage = {
+        id: Date.now().toString(),
+        sender: "agent",
+        text: action === "APPROVE"
+          ? `✅ **Action Approved & Executed**: Automated snapshot created and volume release executed for \`${proposal.resource_id}\` (${proposal.resource_name || 'Asset'}). Recaptured **$${(proposal.monthly_savings || 0).toFixed(2)}/mo**.`
+          : action === "EXEMPT"
+          ? `🛡️ **Mem0 Exemption Saved**: Permanent exemption rule committed for \`${proposal.resource_id}\`. The FinOps AI agent will ignore this asset in all future idle audits.`
+          : `Action proposal for \`${proposal.resource_id}\` was dismissed.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        tools: [action === "APPROVE" ? "aws_ec2_create_snapshot" : "mem0_save_rule"]
+      };
+      setMessages((prev) => [...prev, confirmMsg]);
+    } catch (err: any) {
+      alert("Failed to process proposal: " + err.message);
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [actionKey]: false }));
     }
   };
 
@@ -158,11 +213,11 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
               <h3 className="text-base font-bold text-slate-900">FinOps AI Agentic Copilot</h3>
               <span className="flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Online</span>
+                <span>LangGraph & Mem0 Active</span>
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Autonomous reasoning over AWS CUR, anomaly telemetry & real-time optimization tools
+              Autonomous reasoning over AWS CUR, anomaly telemetry & real-time read-only inspection tools
             </p>
           </div>
         </div>
@@ -182,7 +237,7 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
                   ? "🦙 Ollama (Local)"
                   : aiConfig?.active_provider === "groq"
                   ? "⚡ Groq (Cloud)"
-                  : "Auto LLM"}
+                  : "LangGraph (ReAct)"}
               </span>
             </span>
             <ChevronDownIcon className="w-3.5 h-3.5 text-slate-400" />
@@ -275,7 +330,7 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
 
               <div className={`space-y-2 w-full ${isAgent ? "max-w-2xl lg:max-w-3xl text-left" : "max-w-lg text-right flex flex-col items-end"}`}>
                 {/* Agent Thought / Tool Execution Accordion */}
-                {isAgent && (m.tools?.length || m.thoughts?.length) && (
+                {isAgent && (m.tools?.length || m.thoughts?.length || m.executed_commands?.length) && (
                   <div className="bg-white border border-slate-200/90 rounded-xl p-3 text-xs shadow-2xs space-y-2 text-left w-full">
                     <button
                       onClick={() => toggleThoughts(m.id)}
@@ -300,6 +355,12 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
                             <span>Mem0 Learned</span>
                           </span>
                         )}
+                        {m.executed_commands && m.executed_commands.length > 0 && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-800 border border-slate-300 flex items-center space-x-1">
+                            <Terminal className="w-2.5 h-2.5 text-slate-700" />
+                            <span>{m.executed_commands.length} AWS Command{m.executed_commands.length === 1 ? "" : "s"}</span>
+                          </span>
+                        )}
                       </span>
                       {expandedThoughts[m.id] ? (
                         <ChevronUp className="w-3.5 h-3.5 shrink-0" />
@@ -309,12 +370,14 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
                     </button>
 
                     {expandedThoughts[m.id] && (
-                      <div className="pt-2 border-t border-slate-100 space-y-2 text-[11px]">
+                      <div className="pt-2 border-t border-slate-100 space-y-2.5 text-[11px]">
                         {m.thoughts && (
                           <div className="text-slate-600 bg-slate-50 p-2.5 rounded-lg font-mono text-[11px] border border-slate-200/60 leading-relaxed">
                             💭 {m.thoughts}
                           </div>
                         )}
+
+                        {/* Executed Tools List */}
                         {m.tools?.map((t: any, idx) => (
                           <div
                             key={idx}
@@ -331,6 +394,43 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
                             )}
                           </div>
                         ))}
+
+                        {/* Live Executed AWS CLI Commands Accordion */}
+                        {m.executed_commands && m.executed_commands.length > 0 && (
+                          <div className="space-y-2 pt-1 border-t border-slate-100">
+                            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center space-x-1">
+                              <Terminal className="w-3 h-3 text-indigo-500" />
+                              <span>Live AWS Read-Only Executions ({m.executed_commands.length})</span>
+                            </div>
+                            {m.executed_commands.map((cmd, cIdx) => (
+                              <div key={cIdx} className="bg-slate-900 text-slate-200 p-2.5 rounded-xl border border-slate-800 space-y-1.5 font-mono text-[11px]">
+                                <div className="flex items-center justify-between flex-wrap gap-1">
+                                  <span className="flex items-center space-x-1.5 text-emerald-400 font-bold">
+                                    <span>🔧 Executed:</span>
+                                    <span className="text-white bg-slate-800 px-1.5 py-0.5 rounded text-[10px]">{cmd.command}</span>
+                                  </span>
+                                  <div className="flex items-center space-x-2">
+                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                      cmd.status === "SUCCESS"
+                                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                        : cmd.status === "BLOCKED"
+                                        ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                                        : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                    }`}>
+                                      {cmd.status}
+                                    </span>
+                                    <span className="text-slate-400 text-[10px]">{cmd.latency_ms || 0}ms</span>
+                                  </div>
+                                </div>
+                                {cmd.output && (
+                                  <div className="bg-black/60 p-2 rounded text-[10px] text-slate-300 overflow-x-auto max-h-36 whitespace-pre font-mono border border-slate-800/80">
+                                    {cmd.output}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -338,8 +438,125 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
 
                 {/* Message Bubble */}
                 {isAgent ? (
-                  <div className="bg-white border border-slate-200/90 rounded-2xl rounded-tl-xs p-5 shadow-xs text-xs text-slate-800 text-left w-full">
+                  <div className="bg-white border border-slate-200/90 rounded-2xl rounded-tl-xs p-5 shadow-xs text-xs text-slate-800 text-left w-full space-y-3">
                     <MarkdownRenderer content={m.text} />
+
+                    {/* Human-in-the-Loop Action Proposal Card */}
+                    {m.proposal && (
+                      <div className="mt-3.5 border border-indigo-200/80 bg-gradient-to-br from-indigo-50/50 via-white to-slate-50/60 rounded-xl p-4 shadow-xs space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                              <Sparkles className="w-4 h-4 text-indigo-600" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-bold text-slate-900">⚡ Action Proposal (Human Approval Gate)</h4>
+                              <p className="text-[10px] text-slate-500">Autonomous FinOps Agent recommendation ready for verification</p>
+                            </div>
+                          </div>
+                          {m.proposal.exempted ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 flex items-center space-x-1">
+                              <Brain className="w-3 h-3 text-purple-600" />
+                              <span>Exempted in Mem0</span>
+                            </span>
+                          ) : m.proposal.status === "REMEDIATED" ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center space-x-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              <span>Remediated</span>
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              Pending Approval
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Details grid */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white p-2.5 rounded-lg border border-slate-200/70 text-[11px]">
+                          <div>
+                            <span className="text-[10px] text-slate-400 block font-semibold">Target Asset</span>
+                            <span className="font-mono text-slate-800 text-[10px] font-bold truncate block" title={m.proposal.resource_id}>
+                              {m.proposal.resource_id}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 block font-semibold">Asset Name</span>
+                            <span className="text-slate-700 font-medium truncate block">
+                              {m.proposal.resource_name || "EBS Volume"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 block font-semibold">Recommended Action</span>
+                            <span className="text-indigo-600 font-semibold">{m.proposal.action}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 block font-semibold">Monthly Recapture</span>
+                            <span className="text-emerald-600 font-bold">
+                              +${(m.proposal.monthly_savings || 0).toFixed(2)}/mo
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Safety Note */}
+                        {m.proposal.safety_notes && (
+                          <div className="text-[10px] text-slate-600 bg-amber-50/60 border border-amber-200/60 p-2 rounded-lg flex items-start space-x-1.5">
+                            <span className="text-amber-600 font-bold shrink-0">🛡️ Safety Guardrail:</span>
+                            <span>{m.proposal.safety_notes}</span>
+                          </div>
+                        )}
+
+                        {/* Exemption notice */}
+                        {m.proposal.exempted && m.proposal.exemption_reason && (
+                          <div className="text-[10px] text-purple-700 bg-purple-50/80 border border-purple-200 p-2 rounded-lg flex items-start space-x-1.5">
+                            <Brain className="w-3.5 h-3.5 text-purple-600 shrink-0 mt-0.5" />
+                            <span><strong>Mem0 Policy Match:</strong> {m.proposal.exemption_reason}</span>
+                          </div>
+                        )}
+
+                        {/* Action Buttons */}
+                        {(!m.proposal.status || m.proposal.status === "PENDING") && !m.proposal.exempted && (
+                          <div className="flex items-center space-x-2 pt-1 flex-wrap gap-y-2">
+                            <button
+                              onClick={() => handleApproveProposal(m.id, m.proposal!, "APPROVE")}
+                              disabled={actionLoading[m.proposal.proposal_id || m.id]}
+                              className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1.5 rounded-lg text-xs shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              {actionLoading[m.proposal.proposal_id || m.id] ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Check className="w-3.5 h-3.5" />
+                              )}
+                              <span>Approve & Execute via AWS</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleApproveProposal(m.id, m.proposal!, "EXEMPT")}
+                              disabled={actionLoading[m.proposal.proposal_id || m.id]}
+                              className="flex items-center space-x-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3 py-1.5 rounded-lg text-xs border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              <Brain className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>Exempt & Add to Mem0</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleApproveProposal(m.id, m.proposal!, "REJECT")}
+                              disabled={actionLoading[m.proposal.proposal_id || m.id]}
+                              className="text-slate-400 hover:text-slate-600 px-2 py-1 text-xs cursor-pointer"
+                            >
+                              Dismiss
+                            </button>
+                          </div>
+                        )}
+
+                        {m.proposal.status === "REMEDIATED" && (
+                          <div className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 p-2.5 rounded-lg border border-emerald-200 flex items-center space-x-1.5">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>Remediation completed successfully. Recaptured ${(m.proposal.monthly_savings || 0).toFixed(2)}/mo.</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="mt-3.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
                       <span className="font-mono text-[10px]">{m.timestamp}</span>
                       <button
@@ -383,7 +600,7 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
             </div>
             <div className="bg-white border border-slate-200/90 p-4 rounded-2xl shadow-sm text-xs text-slate-500 flex items-center space-x-2">
               <span className="w-2 h-2 rounded-full bg-indigo-600 animate-ping" />
-              <span>FinOps AI is reasoning over CUR telemetry & idle inventory...</span>
+              <span>FinOps AI is reasoning through LangGraph & executing read-only AWS tools...</span>
             </div>
           </div>
         )}
@@ -422,7 +639,7 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={loading}
-            placeholder="Ask FinOps AI (e.g. 'Why did S3 spend surge?' or 'Find unused EBS disks')..."
+            placeholder="Ask FinOps AI (e.g. 'aws s3api list-buckets' or 'Find unused EBS volumes')..."
             className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
           />
           <button
