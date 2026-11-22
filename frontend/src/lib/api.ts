@@ -196,4 +196,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ resource_id: resourceId, action }),
     }),
+  getAIConfig: (tenantId: string = "tenant-acme") =>
+    fetchJson<any>("/agents/config", tenantId),
+  updateAIConfig: (data: any, tenantId: string = "tenant-acme") =>
+    fetchJson<any>("/agents/config", tenantId, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  testAIProvider: (data: { provider: string; model?: string }, tenantId: string = "tenant-acme") =>
+    fetchJson<any>("/agents/test-provider", tenantId, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 };

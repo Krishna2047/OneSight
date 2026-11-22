@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      aws-svg-icons:
+        specifier: 3.0.0-2021-07-30
+        version: 3.0.0-2021-07-30
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -211,6 +214,9 @@ packages:
     hasBin: true
     peerDependencies:
       postcss: ^8.1.0
+
+  aws-svg-icons@3.0.0-2021-07-30:
+    resolution: {integrity: sha512-XB74sAnPul1SLdj1ZGiebzSZG2LDjQiTe0XRNGXUWh24eOd2E0661e/aYut+uic+QFZj2lOpUpw3UKQ3KPiyxg==}
 
   baseline-browser-mapping@2.11.39:
     resolution: {integrity: sha512-Q9buOYhr2ggrEZpImICecZTJHCCd8yXkRUokFlUEQ8uiD6oP82F4W4jWnhOHZYV+wlvrC51V7Wy0ULyWjil5Wg==}
@@ -821,6 +827,8 @@ snapshots:
       picocolors: 1.1.1
       postcss: 8.5.33
       postcss-value-parser: 4.2.0
+
+  aws-svg-icons@3.0.0-2021-07-30: {}
 
   baseline-browser-mapping@2.11.39: {}
 

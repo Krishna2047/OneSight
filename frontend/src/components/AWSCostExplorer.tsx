@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { CostExplorerResponse } from "@/types";
+import { AWSServiceLogo } from "./AWSServiceLogo";
 import {
   BarChart,
   Bar,
@@ -155,6 +156,7 @@ export function AWSCostExplorer({
             {/* Time Range Pills */}
             <div className="flex items-center p-1 bg-slate-100 rounded-xl border border-slate-200/80 text-xs">
               {[
+                { label: "This Month (MTD)", val: 0 },
                 { label: "Last 7d", val: 7 },
                 { label: "Last 14d", val: 14 },
                 { label: "Last 30d", val: 30 },
@@ -360,9 +362,14 @@ export function AWSCostExplorer({
       <div className="bg-white border border-slate-200/90 shadow-sm rounded-2xl overflow-hidden">
         <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h4 className="text-sm font-bold text-slate-900">Cost & Usage Breakdown</h4>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Live AWS Cost Explorer invoice totals, service share, and period-over-period variance analysis
+            <div className="flex items-center space-x-2">
+              <h4 className="text-sm font-bold text-slate-900">Cost & Usage Breakdown</h4>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                {data.period_label || (days === 0 ? "Month-to-Date" : `Last ${days} Days`)}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Live AWS Cost Explorer spend totals for selected period. Variance compares recent half ({data.current_half_label || "recent"}) vs prior half ({data.prior_half_label || "prior"}).
             </p>
           </div>
 
@@ -385,17 +392,24 @@ export function AWSCostExplorer({
             <thead className="bg-slate-50/80 text-slate-500 font-semibold border-b border-slate-200 uppercase tracking-wider">
               <tr>
                 <th className="py-3 px-5">Dimension Name</th>
-                <th className="py-3 px-5 text-right font-bold text-slate-800">Total Spend ({days}d)</th>
+                <th className="py-3 px-5 text-right font-bold text-slate-800">
+                  Total Spend ({days === 0 ? "MTD" : `${days}d`})
+                </th>
                 <th className="py-3 px-5 text-right">Share (%)</th>
-                <th className="py-3 px-5 text-right">Recent 15d</th>
-                <th className="py-3 px-5 text-right">Prior 15d</th>
+                <th className="py-3 px-5 text-right">Daily Avg</th>
+                <th className="py-3 px-5 text-right" title={data.current_half_label}>
+                  Recent Half
+                </th>
+                <th className="py-3 px-5 text-right" title={data.prior_half_label}>
+                  Prior Half
+                </th>
                 <th className="py-3 px-5 text-right">Period Variance</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredBreakdown.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
+                  <td colSpan={7} className="py-8 text-center text-slate-400">
                     No matching records found
                   </td>
                 </tr>
@@ -404,11 +418,12 @@ export function AWSCostExplorer({
                   const isPositive = row.variance_amount > 0;
                   return (
                     <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3.5 px-5 font-semibold text-slate-900 flex items-center space-x-2">
+                      <td className="py-3.5 px-5 font-semibold text-slate-900 flex items-center space-x-2.5">
                         <span
                           className="w-2.5 h-2.5 rounded-sm shrink-0"
                           style={{ backgroundColor: AWS_PALETTE[idx % AWS_PALETTE.length] }}
                         />
+                        <AWSServiceLogo serviceName={row.dimension_name} size={18} className="w-4 h-4 shrink-0" />
                         <span className="truncate max-w-[260px]">{row.dimension_name}</span>
                       </td>
                       <td className="py-3.5 px-5 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30">
@@ -417,10 +432,13 @@ export function AWSCostExplorer({
                       <td className="py-3.5 px-5 text-right font-mono font-semibold text-slate-700">
                         {row.percentage_of_total.toFixed(1)}%
                       </td>
-                      <td className="py-3.5 px-5 text-right font-mono text-slate-700">
+                      <td className="py-3.5 px-5 text-right font-mono text-slate-600">
+                        ${(row.daily_average ?? (row.total_spend / Math.max(data.days_count || 30, 1))).toFixed(2)}/d
+                      </td>
+                      <td className="py-3.5 px-5 text-right font-mono text-slate-700" title={data.current_half_label}>
                         ${row.current_period_spend.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="py-3.5 px-5 text-right font-mono text-slate-500">
+                      <td className="py-3.5 px-5 text-right font-mono text-slate-500" title={data.prior_half_label}>
                         ${row.prior_period_spend.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </td>
                       <td className="py-3.5 px-5 text-right">

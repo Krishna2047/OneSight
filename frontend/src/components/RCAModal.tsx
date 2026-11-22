@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { AnomalyItem } from "@/types";
+import { AWSServiceLogo } from "./AWSServiceLogo";
 import {
   X,
   Sparkles,
@@ -68,8 +69,8 @@ export function RCAModal({
         {/* Header */}
         <div className="p-6 border-b border-slate-100 flex items-start justify-between bg-white">
           <div className="flex items-center space-x-3.5">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600">
-              <Sparkles className="w-5 h-5 text-indigo-600" />
+            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-center p-1.5 shadow-2xs">
+              <AWSServiceLogo serviceName={anomaly.service_name} size={28} className="w-7 h-7" />
             </div>
             <div>
               <div className="flex items-center space-x-2">

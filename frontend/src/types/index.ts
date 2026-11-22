@@ -91,6 +91,7 @@ export interface CostExplorerTimelinePoint {
 export interface CostExplorerBreakdownItem {
   dimension_name: string;
   total_spend: number;
+  daily_average?: number;
   current_period_spend: number;
   prior_period_spend: number;
   variance_amount: number;
@@ -104,6 +105,10 @@ export interface CostExplorerResponse {
   timeline: CostExplorerTimelinePoint[];
   breakdown: CostExplorerBreakdownItem[];
   total_period_spend: number;
+  period_label?: string;
+  current_half_label?: string;
+  prior_half_label?: string;
+  days_count?: number;
 }
 
 export interface IdleResourceItem {

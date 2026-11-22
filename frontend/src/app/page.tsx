@@ -14,6 +14,8 @@ import { AgentChatConsole } from "@/components/AgentChatConsole";
 import { IdleResourcesModal } from "@/components/IdleResourcesModal";
 import { SimulateSpikeModal } from "@/components/SimulateSpikeModal";
 import { ConnectAWSModal } from "@/components/ConnectAWSModal";
+import { CostMap } from "@/components/CostMap";
+import { SettingsView } from "@/components/SettingsView";
 import { api } from "@/lib/api";
 import {
   TenantItem,
@@ -313,6 +315,16 @@ export default function HomePage() {
                 </div>
               )}
 
+              {/* TAB 3.5: COST MAP (AWS Cost Topology & Heatmap) */}
+              {activeTab === "cost-map" && (
+                <CostMap
+                  tenantId={currentTenantId}
+                  selectedAccountId={selectedAccountId}
+                  onNavigateToCostExplorer={() => setActiveTab("cost-explorer")}
+                  onNavigateToCopilot={() => setActiveTab("agent")}
+                />
+              )}
+
               {/* TAB 4: ANOMALIES (AWS Cost Anomaly Detection) */}
               {activeTab === "anomalies" && (
                 <AnomalyFeed
@@ -380,7 +392,15 @@ export default function HomePage() {
 
               {/* TAB 8: AI COPILOT */}
               {activeTab === "agent" && (
-                <AgentChatConsole tenantId={currentTenantId} />
+                <AgentChatConsole tenantId={currentTenantId} onOpenSettings={() => setActiveTab("settings")} />
+              )}
+
+              {/* TAB 9: SETTINGS */}
+              {activeTab === "settings" && (
+                <SettingsView
+                  tenantId={currentTenantId}
+                  onNavigateToCopilot={() => setActiveTab("agent")}
+                />
               )}
             </div>
           )}

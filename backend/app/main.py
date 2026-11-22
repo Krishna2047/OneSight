@@ -150,10 +150,17 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
-    # Start background scheduled sync
-    sync_task = asyncio.create_task(scheduled_daily_aws_sync())
+    # Start background scheduled sync (skip during automated test runs)
+    sync_task = None
+    if os.getenv("TESTING") != "true" and not os.getenv("PYTEST_CURRENT_TEST"):
+        sync_task = asyncio.create_task(scheduled_daily_aws_sync())
     yield
-    sync_task.cancel()
+    if sync_task:
+        sync_task.cancel()
+        try:
+            await sync_task
+        except asyncio.CancelledError:
+            pass
     logger.info("OneSight Backend shutting down.")
 
 app = FastAPI(

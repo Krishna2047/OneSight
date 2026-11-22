@@ -2,11 +2,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from app.core.config import settings
 
+# Determine database URL with automatic relative path resolution
+db_url = settings.get_database_url if hasattr(settings, "get_database_url") else settings.DATABASE_URL
+
 # For SQLite, check_same_thread=False allows multi-threaded async requests in FastAPI
-connect_args = {"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
+connect_args = {"check_same_thread": False} if db_url.startswith("sqlite") else {}
 
 engine = create_engine(
-    settings.DATABASE_URL,
+    db_url,
     connect_args=connect_args,
     pool_pre_ping=True
 )

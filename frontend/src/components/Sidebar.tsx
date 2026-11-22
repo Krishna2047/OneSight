@@ -219,6 +219,18 @@ export function Sidebar({ activeTab, setActiveTab, anomalyCount }: SidebarProps)
                 <Bot className="w-4 h-4 text-amber-500" />
                 <span>AI Copilot</span>
               </button>
+
+              <button
+                onClick={() => setActiveTab("settings")}
+                className={`w-full flex items-center space-x-3 px-3 py-2 rounded-xl font-medium transition-colors ${
+                  activeTab === "settings"
+                    ? "bg-indigo-50 text-indigo-600 font-semibold"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+              >
+                <Settings className="w-4 h-4 text-slate-400" />
+                <span>Settings</span>
+              </button>
             </div>
           )}
         </div>

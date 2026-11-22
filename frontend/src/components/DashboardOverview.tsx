@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { DashboardSummaryResponse } from "@/types";
+import { AWSServiceLogo } from "./AWSServiceLogo";
 import {
   ExternalLink,
   Info,
@@ -372,9 +373,12 @@ export function DashboardOverview({
               const widthPct = Math.max((res.cost / maxResourceCost) * 100, 12);
               return (
                 <div key={idx} className="flex items-center justify-between text-xs space-x-4">
-                  <span className="font-semibold text-slate-800 w-56 truncate shrink-0" title={res.name}>
-                    {res.name}
-                  </span>
+                  <div className="flex items-center space-x-2 w-56 shrink-0 min-w-0">
+                    <AWSServiceLogo serviceName={res.name} size={18} className="w-4 h-4 shrink-0" />
+                    <span className="font-semibold text-slate-800 truncate" title={res.name}>
+                      {res.name}
+                    </span>
+                  </div>
                   <div className="flex-1 flex items-center justify-start space-x-3">
                     <div
                       className="bg-[#3B49DF] h-3.5 rounded-full transition-all"

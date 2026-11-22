@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { AnomalyItem } from "@/types";
+import { AWSServiceLogo } from "./AWSServiceLogo";
 import {
   AlertTriangle,
   Sparkles,
@@ -180,7 +181,10 @@ export function AnomalyFeed({
                   </div>
 
                   {/* Service Title */}
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center p-1 shrink-0">
+                      <AWSServiceLogo serviceName={anomaly.service_name} size={22} className="w-5 h-5" />
+                    </div>
                     <h4 className="text-base font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">
                       {anomaly.service_name}
                     </h4>
