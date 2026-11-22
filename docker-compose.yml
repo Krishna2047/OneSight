@@ -20,7 +20,25 @@ services:
       timeout: 5s
       retries: 5
 
-  # 2. OneSight Backend (FastAPI + Boto3 Cost Explorer Engine)
+  # 2. Standalone Mem0 Agent Memory Microservice
+  mem0:
+    build:
+      context: ./mem0
+      dockerfile: Dockerfile
+    container_name: onesight-mem0
+    ports:
+      - "8888:8888"
+    environment:
+      - DATA_DIR=/data
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    volumes:
+      - onesight_mem0data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # 3. OneSight Backend (FastAPI + Boto3 Cost Explorer Engine)
   backend:
     build:
       context: ./backend
@@ -30,16 +48,27 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://onesight:onesight_password@db:5432/onesight
+      - MEM0_URL=http://mem0:8888
       - MOCK_CLOUD_ENABLED=False
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      # AI Inference & Provider Configuration
+      - ACTIVE_LLM_PROVIDER=${ACTIVE_LLM_PROVIDER:-ollama}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-120b}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy
+      mem0:
+        condition: service_started
     restart: unless-stopped
 
-  # 3. OneSight Frontend (Next.js 14)
+  # 4. OneSight Frontend (Next.js 14)
   frontend:
     build:
       context: ./frontend
@@ -55,3 +84,4 @@ services:
 
 volumes:
   onesight_pgdata:
+  onesight_mem0data:

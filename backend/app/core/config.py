@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     LLM_MODEL: str = "llama3.1"  # active model name
     
+    # Standalone Mem0 Service Configuration (Docker microservice on port 8888)
+    MEM0_URL: str = "http://localhost:8888"
+    
     # Default Notification Webhooks (can also be configured via UI)
     DEFAULT_SLACK_WEBHOOK: Optional[str] = None
     DEFAULT_TEAMS_WEBHOOK: Optional[str] = None

@@ -47,6 +47,23 @@ class Mem0Service:
         }
     ]
 
+    @classmethod
+    def _call_standalone_mem0(cls, method: str, endpoint: str, **kwargs) -> Optional[Any]:
+        """
+        Attempts to communicate with the standalone Mem0 Docker service container.
+        """
+        mem0_base = getattr(settings, "MEM0_URL", None)
+        if not mem0_base:
+            return None
+        try:
+            with httpx.Client(timeout=2.0) as client:
+                res = client.request(method, f"{mem0_base.rstrip('/')}{endpoint}", **kwargs)
+                if res.status_code == 200:
+                    return res.json()
+        except Exception:
+            pass
+        return None
+
     # -------------------------------------------------------------------------
     # 1. Embeddings Pipeline (Adaptive Multi-Tenant Provider)
     # -------------------------------------------------------------------------
@@ -163,9 +180,17 @@ class Mem0Service:
     ) -> List[Dict[str, Any]]:
         """
         Hybrid Semantic + Keyword Search for tenant memories:
+        - Tries standalone Mem0 Docker container service first.
         - Calculates cosine similarity against stored vectors.
         - Adds keyword boosting for matching AWS resource IDs (vol-, i-, arn:) and service tags.
         """
+        # Try standalone Mem0 microservice container
+        remote = cls._call_standalone_mem0("POST", "/v1/memories/search", json={
+            "query": query, "tenant_id": tenant_id, "limit": limit, "threshold": threshold
+        })
+        if remote is not None and isinstance(remote, list) and len(remote) > 0:
+            return remote
+
         cls.seed_if_empty(db, tenant_id)
 
         all_memories = db.query(AgentMemory).filter(
@@ -353,6 +378,16 @@ class Mem0Service:
         db.commit()
         db.refresh(mem)
 
+        # Also forward to standalone Mem0 container if running
+        cls._call_standalone_mem0("POST", "/v1/memories", json={
+            "content": content.strip(),
+            "tenant_id": tenant_id,
+            "user_id": user_id,
+            "memory_type": memory_type,
+            "category": category,
+            "metadata": metadata
+        })
+
         return {
             "id": mem.id,
             "tenant_id": mem.tenant_id,
@@ -366,6 +401,12 @@ class Mem0Service:
 
     @classmethod
     def list_memories(cls, db: Session, tenant_id: str, category: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+        # Check standalone Mem0 container first
+        cat_param = f"&category={category}" if category and category.upper() != "ALL" else ""
+        remote = cls._call_standalone_mem0("GET", f"/v1/memories?tenant_id={tenant_id}{cat_param}&limit={limit}")
+        if remote is not None and isinstance(remote, list) and len(remote) > 0:
+            return remote
+
         cls.seed_if_empty(db, tenant_id)
 
         query = db.query(AgentMemory).filter(AgentMemory.tenant_id == tenant_id)
@@ -390,6 +431,7 @@ class Mem0Service:
 
     @classmethod
     def delete_memory(cls, db: Session, tenant_id: str, memory_id: int) -> bool:
+        cls._call_standalone_mem0("DELETE", f"/v1/memories/{memory_id}?tenant_id={tenant_id}")
         mem = db.query(AgentMemory).filter(
             AgentMemory.tenant_id == tenant_id,
             AgentMemory.id == memory_id
@@ -402,6 +444,7 @@ class Mem0Service:
 
     @classmethod
     def clear_memories(cls, db: Session, tenant_id: str) -> int:
+        cls._call_standalone_mem0("POST", f"/v1/memories/clear?tenant_id={tenant_id}")
         count = db.query(AgentMemory).filter(AgentMemory.tenant_id == tenant_id).delete()
         db.commit()
         return count
