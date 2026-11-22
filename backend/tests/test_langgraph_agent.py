@@ -93,6 +93,9 @@ def test_langgraph_idle_waste_and_action_proposal():
             )
             db.add(item)
             db.commit()
+        else:
+            existing.status = "ACTIVE_IDLE"
+            db.commit()
 
         # Clear any prior exemption for clean test
         Mem0Service.clear_memories(db, tenant_id="tenant-acme")

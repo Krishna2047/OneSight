@@ -2,7 +2,7 @@ import os
 import time
 import httpx
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.core.database import get_db
@@ -12,6 +12,7 @@ from app.models.billing import IdleResource
 from app.services.agent_runtime import AgenticFinOpsEngine
 from app.services.langgraph_agent import LangGraphFinOpsEngine
 from app.services.memory_service import Mem0Service
+from app.services.knowledge_service import KnowledgeBaseService
 
 router = APIRouter(prefix="/agents", tags=["AWS FinOps Agentic Platform"])
 
@@ -495,4 +496,99 @@ def clear_memories(
     """
     count = Mem0Service.clear_memories(db, tenant_id=tenant_id)
     return {"status": "CLEARED", "deleted_count": count}
+
+# =========================================================================
+# Knowledge Base (RAG) Document Ingestion & Search Endpoints
+# =========================================================================
+
+class KnowledgeSearchRequest(BaseModel):
+    query: str
+    limit: int = 4
+    category: Optional[str] = None
+
+@router.post("/knowledge/upload")
+async def upload_knowledge_document(
+    file: UploadFile = File(...),
+    category: str = Form("AWS_CLI"),
+    title: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Upload an operational document (Markdown, PDF, TXT, JSON, YAML, CSV) to the Knowledge Base.
+    Extracts text, splits semantically into chunks while preserving AWS CLI commands,
+    computes vector embeddings via Mem0 engine, and indexes for LangGraph agent reasoning.
+    """
+    content_bytes = await file.read()
+    try:
+        return KnowledgeBaseService.ingest_document(
+            db=db,
+            tenant_id=tenant_id,
+            filename=file.filename or "uploaded_document.txt",
+            content_bytes=content_bytes,
+            category=category,
+            title=title,
+            description=description
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to ingest document: {str(e)}")
+
+@router.get("/knowledge")
+def list_knowledge_documents(
+    category: Optional[str] = None,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+) -> List[Dict[str, Any]]:
+    """
+    List all indexed Knowledge Base documents with chunk counts and metadata.
+    """
+    return KnowledgeBaseService.list_documents(db, tenant_id=tenant_id, category=category)
+
+@router.get("/knowledge/{doc_id}")
+def get_knowledge_document(
+    doc_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Retrieve full details and semantic chunks of a specific Knowledge Base document.
+    """
+    doc = KnowledgeBaseService.get_document_details(db, tenant_id=tenant_id, doc_id=doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return doc
+
+@router.post("/knowledge/search")
+def search_knowledge_base(
+    req: KnowledgeSearchRequest,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+) -> List[Dict[str, Any]]:
+    """
+    Perform hybrid semantic vector + keyword similarity search across all tenant documents.
+    Returns matching chunks with relevance scores, headers, and extracted AWS CLI commands.
+    """
+    return KnowledgeBaseService.search_knowledge(
+        db=db,
+        tenant_id=tenant_id,
+        query=req.query,
+        limit=req.limit,
+        category=req.category
+    )
+
+@router.delete("/knowledge/{doc_id}")
+def delete_knowledge_document(
+    doc_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Delete a document from the Knowledge Base and cascade-delete all its indexed vector chunks.
+    """
+    success = KnowledgeBaseService.delete_document(db, tenant_id=tenant_id, doc_id=doc_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"status": "DELETED", "id": doc_id}
+
 

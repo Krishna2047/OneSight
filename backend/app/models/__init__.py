@@ -3,7 +3,7 @@ from app.models.tenant import Tenant, AWSAccount
 from app.models.billing import CloudProvider, BillingRecord, IdleResource
 from app.models.anomaly import AnomalySeverity, AnomalyStatus, AnomalyEvent
 from app.models.alert import AlertMetricType, AlertSeverity, AlertChannelType, AlertRule, AlertHistory
-from app.models.agent import AgentActionLog, AgentMemory
+from app.models.agent import AgentActionLog, AgentMemory, KnowledgeDocument, KnowledgeChunk
 
 __all__ = [
     "Base",
@@ -21,5 +21,7 @@ __all__ = [
     "AlertRule",
     "AlertHistory",
     "AgentActionLog",
-    "AgentMemory"
+    "AgentMemory",
+    "KnowledgeDocument",
+    "KnowledgeChunk"
 ]

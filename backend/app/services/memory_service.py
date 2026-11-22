@@ -147,6 +147,9 @@ class Mem0Service:
         cpu_vec = cls.compute_dense_cpu_vector(text)
         return cpu_vec, "hybrid-cpu-dense"
 
+    # Alias for embedding calculation
+    compute_embedding = get_embedding
+
     # -------------------------------------------------------------------------
     # 2. Similarity & Search
     # -------------------------------------------------------------------------

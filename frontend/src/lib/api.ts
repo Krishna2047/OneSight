@@ -7,6 +7,8 @@ import {
   AnomalyItem,
   AlertRuleItem,
   AlertHistoryItem,
+  KnowledgeDocumentItem,
+  KnowledgeSearchResult,
 } from "@/types";
 
 const getApiBase = (): string => {
@@ -243,4 +245,44 @@ export const api = {
     fetchJson<any>(`/agents/memories/${id}`, tenantId, { method: "DELETE" }),
   clearAgentMemories: (tenantId: string = "tenant-acme") =>
     fetchJson<any>("/agents/memories/clear", tenantId, { method: "POST" }),
+
+  // Knowledge Base (RAG) Document Ingestion & Search
+  getKnowledgeDocuments: (tenantId: string = "tenant-acme", category?: string) => {
+    const query = category && category !== "ALL" ? `?category=${category}` : "";
+    return fetchJson<KnowledgeDocumentItem[]>(`/agents/knowledge${query}`, tenantId);
+  },
+  uploadKnowledgeDocument: async (
+    file: File,
+    category: string = "AWS_CLI",
+    tenantId: string = "tenant-acme",
+    title?: string,
+    description?: string
+  ) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("category", category);
+    if (title) formData.append("title", title);
+    if (description) formData.append("description", description);
+
+    const apiBase = getApiBase();
+    const res = await fetch(`${apiBase}/agents/knowledge/upload`, {
+      method: "POST",
+      headers: {
+        "x-tenant-id": tenantId,
+      },
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Failed to upload document");
+    }
+    return res.json();
+  },
+  searchKnowledgeBase: (query: string, tenantId: string = "tenant-acme", limit: number = 4) =>
+    fetchJson<KnowledgeSearchResult[]>("/agents/knowledge/search", tenantId, {
+      method: "POST",
+      body: JSON.stringify({ query, limit }),
+    }),
+  deleteKnowledgeDocument: (docId: number, tenantId: string = "tenant-acme") =>
+    fetchJson<any>(`/agents/knowledge/${docId}`, tenantId, { method: "DELETE" }),
 };

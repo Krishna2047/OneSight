@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { api } from "@/lib/api";
+import { KnowledgeDocumentItem, KnowledgeSearchResult } from "@/types";
 import {
   Settings,
   Cpu,
@@ -29,7 +30,11 @@ import {
   Sparkles,
   Filter,
   X,
-  HelpCircle
+  HelpCircle,
+  FileText,
+  UploadCloud,
+  FileCode,
+  FolderOpen
 } from "lucide-react";
 
 interface SettingsViewProps {
@@ -38,7 +43,7 @@ interface SettingsViewProps {
 }
 
 export function SettingsView({ tenantId = "tenant-acme", onNavigateToCopilot }: SettingsViewProps) {
-  const [activeTab, setActiveTab] = useState<"engine" | "memory">("engine");
+  const [activeTab, setActiveTab] = useState<"engine" | "memory" | "knowledge">("engine");
 
   // AI Provider config states
   const [config, setConfig] = useState<any>(null);
@@ -82,6 +87,21 @@ export function SettingsView({ tenantId = "tenant-acme", onNavigateToCopilot }: 
   const [newCategory, setNewCategory] = useState("GENERAL");
   const [addingMemory, setAddingMemory] = useState(false);
   const [memoryMessage, setMemoryMessage] = useState<string | null>(null);
+
+  // -------------------------------------------------------------------------
+  // Knowledge Base (RAG) Document States
+  // -------------------------------------------------------------------------
+  const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocumentItem[]>([]);
+  const [knowledgeLoading, setKnowledgeLoading] = useState(false);
+  const [knowledgeSearchQuery, setKnowledgeSearchQuery] = useState("");
+  const [knowledgeSearchResults, setKnowledgeSearchResults] = useState<KnowledgeSearchResult[] | null>(null);
+  const [searchingKnowledge, setSearchingKnowledge] = useState(false);
+  const [uploadCategory, setUploadCategory] = useState("AWS_CLI");
+  const [uploadTitle, setUploadTitle] = useState("");
+  const [uploadDescription, setUploadDescription] = useState("");
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadConfig = async () => {
     setLoading(true);
@@ -231,6 +251,78 @@ export function SettingsView({ tenantId = "tenant-acme", onNavigateToCopilot }: 
     }
   };
 
+  // -------------------------------------------------------------------------
+  // Knowledge Base (RAG) Document Handlers
+  // -------------------------------------------------------------------------
+  const loadKnowledge = async () => {
+    setKnowledgeLoading(true);
+    try {
+      const docs = await api.getKnowledgeDocuments(tenantId);
+      setKnowledgeDocs(docs);
+    } catch (e) {
+      console.error("Could not load knowledge docs", e);
+    } finally {
+      setKnowledgeLoading(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingDoc(true);
+    setUploadMessage(null);
+    try {
+      const res = await api.uploadKnowledgeDocument(
+        file,
+        uploadCategory,
+        tenantId,
+        uploadTitle.trim() || undefined,
+        uploadDescription.trim() || undefined
+      );
+      setUploadMessage({ type: "success", text: res.message || "Document uploaded and indexed into Knowledge Base!" });
+      setUploadTitle("");
+      setUploadDescription("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      await loadKnowledge();
+    } catch (err: any) {
+      setUploadMessage({ type: "error", text: err.message || "Failed to upload document" });
+    } finally {
+      setUploadingDoc(false);
+      setTimeout(() => setUploadMessage(null), 6000);
+    }
+  };
+
+  const handleSearchKnowledge = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!knowledgeSearchQuery.trim()) {
+      setKnowledgeSearchResults(null);
+      return;
+    }
+    setSearchingKnowledge(true);
+    try {
+      const results = await api.searchKnowledgeBase(knowledgeSearchQuery.trim(), tenantId);
+      setKnowledgeSearchResults(results);
+    } catch (e) {
+      console.error("Search knowledge base failed", e);
+    } finally {
+      setSearchingKnowledge(false);
+    }
+  };
+
+  const handleDeleteDocument = async (id: number) => {
+    if (!confirm("Are you sure you want to delete this document from the Knowledge Base? All indexed chunks will be deleted.")) return;
+    try {
+      await api.deleteKnowledgeDocument(id, tenantId);
+      await loadKnowledge();
+      if (knowledgeSearchResults) {
+        setKnowledgeSearchResults(prev => prev ? prev.filter(c => c.document_id !== id) : null);
+      }
+    } catch (e: any) {
+      alert("Error deleting document: " + e.message);
+    }
+  };
+
   if (loading) {
     return (
       <div className="py-24 text-center">
@@ -271,7 +363,7 @@ export function SettingsView({ tenantId = "tenant-acme", onNavigateToCopilot }: 
 
         <div className="flex items-center space-x-3">
           <button
-            onClick={activeTab === "engine" ? loadConfig : loadMemories}
+            onClick={activeTab === "engine" ? loadConfig : activeTab === "memory" ? loadMemories : loadKnowledge}
             className="flex items-center space-x-1.5 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -302,7 +394,7 @@ export function SettingsView({ tenantId = "tenant-acme", onNavigateToCopilot }: 
       )}
 
       {/* Navigation Sub-Tabs */}
-      <div className="flex items-center space-x-2 border-b border-slate-200 pb-3">
+      <div className="flex items-center space-x-2 border-b border-slate-200 pb-3 flex-wrap gap-y-2">
         <button
           onClick={() => setActiveTab("engine")}
           className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
@@ -332,6 +424,26 @@ export function SettingsView({ tenantId = "tenant-acme", onNavigateToCopilot }: 
             activeTab === "memory" ? "bg-white/20 text-white" : "bg-indigo-50 text-indigo-700"
           }`}>
             {memories.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab("knowledge");
+            loadKnowledge();
+          }}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === "knowledge"
+              ? "bg-indigo-600 text-white shadow-xs"
+              : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>Knowledge Base (RAG)</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+            activeTab === "knowledge" ? "bg-white/20 text-white" : "bg-indigo-50 text-indigo-700"
+          }`}>
+            {knowledgeDocs.length}
           </span>
         </button>
       </div>
@@ -942,6 +1054,282 @@ export function SettingsView({ tenantId = "tenant-acme", onNavigateToCopilot }: 
                         title="Delete this memory"
                       >
                         <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* =================================================================== */}
+      {/* TAB 3: KNOWLEDGE BASE (RAG DOCUMENTS)                               */}
+      {/* =================================================================== */}
+      {activeTab === "knowledge" && (
+        <div className="space-y-6">
+          {/* Upload Card */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                  <UploadCloud className="w-4 h-4 text-indigo-600" />
+                  <span>Upload Operational Document / AWS Runbook</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Index Markdown playbooks, PDF runbooks, JSON configs, or CSV sheets for zero-hallucination agent reasoning.
+                </p>
+              </div>
+              <span className="text-[11px] font-semibold text-slate-400 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+                Supports: .md, .pdf, .txt, .json, .yaml, .csv
+              </span>
+            </div>
+
+            {uploadMessage && (
+              <div className={`p-3 rounded-xl text-xs flex items-center space-x-2 border ${
+                uploadMessage.type === "success"
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                  : "bg-rose-50 text-rose-800 border-rose-200"
+              }`}>
+                {uploadMessage.type === "success" ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                )}
+                <span>{uploadMessage.text}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                  Document Category
+                </label>
+                <select
+                  value={uploadCategory}
+                  onChange={(e) => setUploadCategory(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                >
+                  <option value="AWS_CLI">AWS CLI Playbook & Commands</option>
+                  <option value="FINOPS_RUNBOOK">FinOps Waste Remediation Runbook</option>
+                  <option value="TAGGING_POLICY">Tagging & Governance Policy</option>
+                  <option value="ARCHITECTURE">Architecture & Topology Spec</option>
+                  <option value="GENERAL">General Operational Guide</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                  Document Title (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={uploadTitle}
+                  onChange={(e) => setUploadTitle(e.target.value)}
+                  placeholder="e.g. EC2 & EBS Clean-up Runbook"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                  Select File & Ingest
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".md,.txt,.pdf,.json,.yaml,.yml,.csv"
+                  onChange={handleFileUpload}
+                  disabled={uploadingDoc}
+                  className="w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer disabled:opacity-50"
+                />
+              </div>
+            </div>
+
+            {uploadingDoc && (
+              <div className="flex items-center space-x-2 text-xs text-indigo-600 bg-indigo-50 p-2.5 rounded-xl border border-indigo-100">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <span>Extracting text, chunking Markdown sections, and generating Mem0 vector embeddings...</span>
+              </div>
+            )}
+          </div>
+
+          {/* Semantic Search Tester Card */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                <Search className="w-4 h-4 text-indigo-600" />
+                <span>Test Knowledge Base Hybrid Semantic Search</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Simulate how the FinOps AI Agent retrieves exact commands from your uploaded documents during chat.
+              </p>
+            </div>
+
+            <form onSubmit={handleSearchKnowledge} className="flex items-center space-x-2">
+              <input
+                type="text"
+                value={knowledgeSearchQuery}
+                onChange={(e) => setKnowledgeSearchQuery(e.target.value)}
+                placeholder="Ask about a command or runbook (e.g. 'how to list s3 buckets' or 'drain nat gateway')..."
+                className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              />
+              <button
+                type="submit"
+                disabled={searchingKnowledge || !knowledgeSearchQuery.trim()}
+                className="flex items-center space-x-1.5 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {searchingKnowledge ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Search className="w-3.5 h-3.5" />
+                )}
+                <span>Search Chunks</span>
+              </button>
+            </form>
+
+            {knowledgeSearchResults && (
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span>Found {knowledgeSearchResults.length} relevant knowledge chunk(s):</span>
+                  <button
+                    onClick={() => {
+                      setKnowledgeSearchResults(null);
+                      setKnowledgeSearchQuery("");
+                    }}
+                    className="text-indigo-600 hover:underline cursor-pointer"
+                  >
+                    Clear Results
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {knowledgeSearchResults.map((chunk, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-xs"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-slate-800 flex items-center space-x-1">
+                          <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>{chunk.filename}</span>
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">
+                          Relevance: {chunk.score.toFixed(2)}
+                        </span>
+                      </div>
+
+                      {chunk.header && (
+                        <div className="text-[11px] font-semibold text-slate-500">
+                          Section: {chunk.header}
+                        </div>
+                      )}
+
+                      <p className="text-[11px] text-slate-700 bg-white p-2.5 rounded-lg border border-slate-200/80 font-mono whitespace-pre-wrap max-h-36 overflow-y-auto">
+                        {chunk.content}
+                      </p>
+
+                      {chunk.aws_command && (
+                        <div className="bg-slate-900 text-emerald-400 p-2 rounded-lg font-mono text-[10px] flex items-center justify-between">
+                          <span>🔧 {chunk.aws_command}</span>
+                          <span className="text-slate-400 text-[9px]">Extracted AWS CLI</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Document Library Table */}
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                  <FolderOpen className="w-4 h-4 text-indigo-600" />
+                  <span>Indexed Knowledge Base Documents ({knowledgeDocs.length})</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  All active operational runbooks and reference materials available to the agent
+                </p>
+              </div>
+              <button
+                onClick={loadKnowledge}
+                disabled={knowledgeLoading}
+                className="flex items-center space-x-1 text-xs text-indigo-600 hover:text-indigo-700 font-semibold cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${knowledgeLoading ? "animate-spin" : ""}`} />
+                <span>Reload</span>
+              </button>
+            </div>
+
+            {knowledgeDocs.length === 0 ? (
+              <div className="py-12 text-center border-2 border-dashed border-slate-200 rounded-xl space-y-2">
+                <FileCode className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="text-xs font-semibold text-slate-700">No documents uploaded yet</p>
+                <p className="text-[11px] text-slate-400 max-w-sm mx-auto">
+                  Upload an AWS CLI cheatsheet, runbook, or company policy above. The agent will index it and use it during chat!
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {knowledgeDocs.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="border border-slate-200 rounded-xl p-4 bg-white hover:border-slate-300 transition-all space-y-3 flex flex-col justify-between"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center space-x-2">
+                          <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-slate-900 truncate max-w-[170px]" title={doc.title}>
+                              {doc.title}
+                            </h4>
+                            <span className="text-[10px] text-slate-400 truncate block font-mono">
+                              {doc.filename}
+                            </span>
+                          </div>
+                        </div>
+                        <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-700 uppercase">
+                          {doc.file_type}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          {doc.category}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600">
+                          {doc.chunk_count} vector chunk{doc.chunk_count === 1 ? "" : "s"}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {(doc.file_size_bytes / 1024).toFixed(1)} KB
+                        </span>
+                      </div>
+
+                      {doc.description && (
+                        <p className="text-[11px] text-slate-500 line-clamp-2">
+                          {doc.description}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
+                      <span>
+                        {doc.created_at ? new Date(doc.created_at).toLocaleDateString([], { month: "short", day: "numeric" }) : ""}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteDocument(doc.id)}
+                        className="text-rose-600 hover:text-rose-700 font-semibold flex items-center space-x-1 cursor-pointer"
+                        title="Delete document and vector chunks"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
                       </button>
                     </div>
                   </div>

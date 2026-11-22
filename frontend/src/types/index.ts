@@ -202,6 +202,31 @@ export interface ExecutedCommandEntry {
   truncated?: boolean;
 }
 
+export interface KnowledgeDocumentItem {
+  id: number;
+  tenant_id: string;
+  title: string;
+  filename: string;
+  file_type: string;
+  file_size_bytes: number;
+  chunk_count: number;
+  category: string;
+  description?: string;
+  created_at?: string;
+}
+
+export interface KnowledgeSearchResult {
+  chunk_id: number;
+  document_id: number;
+  filename: string;
+  title: string;
+  category: string;
+  header?: string;
+  content: string;
+  aws_command?: string;
+  score: number;
+}
+
 export interface AgentChatMessage {
   id: string;
   sender: "user" | "agent";
@@ -211,4 +236,5 @@ export interface AgentChatMessage {
   thoughts?: string;
   proposal?: AgentActionProposal | null;
   executed_commands?: ExecutedCommandEntry[];
+  recalled_knowledge?: KnowledgeSearchResult[];
 }

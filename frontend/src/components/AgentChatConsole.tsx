@@ -25,7 +25,8 @@ import {
   Brain,
   Shield,
   ShieldAlert,
-  Loader2
+  Loader2,
+  FileText
 } from "lucide-react";
 
 interface AgentChatConsoleProps {
@@ -133,6 +134,7 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
         thoughts: res.thoughts,
         proposal: res.proposal,
         executed_commands: res.executed_commands,
+        recalled_knowledge: (res as any).recalled_knowledge,
       };
       setMessages((prev) => [...prev, agentMsg]);
     } catch (err: any) {
@@ -359,6 +361,12 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
                           <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-800 border border-slate-300 flex items-center space-x-1">
                             <Terminal className="w-2.5 h-2.5 text-slate-700" />
                             <span>{m.executed_commands.length} AWS Command{m.executed_commands.length === 1 ? "" : "s"}</span>
+                          </span>
+                        )}
+                        {m.recalled_knowledge && m.recalled_knowledge.length > 0 && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-50 text-purple-700 border border-purple-200 flex items-center space-x-1">
+                            <FileText className="w-2.5 h-2.5 text-purple-600" />
+                            <span>RAG Grounded ({m.recalled_knowledge.length} Doc{m.recalled_knowledge.length === 1 ? "" : "s"})</span>
                           </span>
                         )}
                       </span>

@@ -8,6 +8,7 @@ Welcome to the central documentation hub for **OneSight** (styled as *Costimizer
 
 | Document | Purpose & Description | Target Reader |
 | :--- | :--- | :--- |
+| **[KNOWLEDGE_BASE_RAG.md](./KNOWLEDGE_BASE_RAG.md)** | **Knowledge Base (RAG) Document Ingestion Specification.** Details document parsing (`.md`, `.pdf`, `.txt`, `.json`, `.yaml`), semantic chunking, AWS CLI command extraction, hybrid vector search math, and LangGraph prompt injection. | AI Agents, FinOps Engineers & Developers |
 | **[POWERFUL_AI_AGENT_IMPLEMENTATION.md](./POWERFUL_AI_AGENT_IMPLEMENTATION.md)** | **Powerful AI Agent Implementation Blueprint.** Comprehensive guide to the LangGraph ReAct engine, AWS Read-Only Command Runner, the 4 Guardrails, Mem0 memory, and HITL proposal cards. | AI Agents, FinOps Engineers & Architects |
 | **[AUTONOMOUS_AWS_CLI_AGENT.md](./AUTONOMOUS_AWS_CLI_AGENT.md)** | **Autonomous Read-Only AWS CLI & Boto3 Agent Specification.** Details the iterative ReAct execution loop, IAM `ReadOnlyAccess` boundary, and the 4 essential safety guardrails. | AI Agents, Security & FinOps Engineers |
 | **[LANGGRAPH_AGENT_PLAN.md](./LANGGRAPH_AGENT_PLAN.md)** | **Autonomous Multi-Agent Swarm Blueprint.** Details the LangGraph cyclic state machine (`FinOpsAgentState`), 6 specialist nodes, and Human-in-the-Loop (HITL) approval workflows. | AI Agents & FinOps Architects |

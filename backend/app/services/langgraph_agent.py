@@ -15,6 +15,7 @@ from app.models.anomaly import AnomalyEvent
 from app.services.aws_cost_explorer import AWSCostExplorerService
 from app.services.memory_service import Mem0Service
 from app.services.aws_command_runner import AWSReadOnlyCommandRunner
+from app.services.knowledge_service import KnowledgeBaseService
 
 logger = logging.getLogger("onesight.langgraph")
 
@@ -27,6 +28,8 @@ class FinOpsAgentState(TypedDict):
     user_query: str
     intent: str
     recalled_memories: List[Dict[str, Any]]
+    recalled_knowledge: List[Dict[str, Any]]
+    suggested_command_from_doc: Optional[str]
     executed_tools: List[Dict[str, Any]]
     executed_commands: List[Dict[str, Any]]
     action_proposal: Optional[Dict[str, Any]]
@@ -178,13 +181,20 @@ class LangGraphFinOpsEngine:
     @classmethod
     def _memory_recall_node(cls, state: FinOpsAgentState, db: Session) -> FinOpsAgentState:
         """
-        Node 1: Recalls active team policies and resource exemptions from Mem0.
+        Node 1: Recalls active team policies from Mem0 AND semantic matches from Knowledge Base documents.
         """
         query = state["user_query"]
         tenant_id = state["tenant_id"]
 
+        # 1. Mem0 Organizational Rules & Exemptions
         mem_ctx, matches = Mem0Service.get_context_for_prompt(db, tenant_id, query)
         state["recalled_memories"] = matches
+
+        # 2. Knowledge Base Document Search (RAG)
+        kb_ctx, kb_matches, suggested_cmd = KnowledgeBaseService.get_knowledge_context_for_prompt(db, tenant_id, query, limit=3)
+        state["recalled_knowledge"] = kb_matches
+        state["suggested_command_from_doc"] = suggested_cmd
+
         return state
 
     @classmethod
@@ -296,7 +306,14 @@ $ {clean_q}
 
         # Path C: Natural Language AWS live inspection
         if intent == "AWS_LIVE_INSPECTION":
-            suggested_cmd = cls._generate_aws_command_for_query(query)
+            suggested_cmd = state.get("suggested_command_from_doc")
+            doc_source = None
+            if suggested_cmd and state.get("recalled_knowledge"):
+                doc_source = state["recalled_knowledge"][0].get("filename")
+
+            if not suggested_cmd:
+                suggested_cmd = cls._generate_aws_command_for_query(query)
+
             if suggested_cmd:
                 cli_res = FinOpsToolRegistry.execute_tool(db, "aws_cli_read_only", {"command": suggested_cmd}, tenant_id)
                 cmd_entry = {
@@ -304,13 +321,17 @@ $ {clean_q}
                     "status": cli_res.get("status"),
                     "latency_ms": cli_res.get("latency_ms"),
                     "output": cli_res.get("output"),
-                    "error": cli_res.get("error")
+                    "error": cli_res.get("error"),
+                    "source_doc": doc_source
                 }
                 executed_commands.append(cmd_entry)
-                executed_tools.append({"tool": "aws_cli_read_only", "command": suggested_cmd, "status": cli_res.get("status")})
+                tool_label = "aws_cli_read_only" if not doc_source else "knowledge_base_runbook_cli"
+                executed_tools.append({"tool": tool_label, "command": suggested_cmd, "status": cli_res.get("status"), "source": doc_source})
 
                 state["executed_tools"] = executed_tools
                 state["executed_commands"] = executed_commands
+
+                source_banner = f"\n> 📄 **Grounded in Knowledge Base Runbook:** `{doc_source}`\n" if doc_source else ""
 
                 # Check if AWS returned NoCredentials error
                 if "NoCredentials" in (cli_res.get("output") or "") or "Unable to locate credentials" in (cli_res.get("output") or ""):
@@ -320,7 +341,7 @@ I attempted to inspect your live AWS environment using the read-only command:
 ```bash
 $ {suggested_cmd}
 ```
-
+{source_banner}
 **AWS Execution Status:** `NO_CREDENTIALS` ({cli_res.get('latency_ms', 0)}ms)
 
 > 💡 **Notice:** Your linked AWS account requires IAM Read-Only credentials.
@@ -336,7 +357,7 @@ I executed the following read-only AWS inspection command to answer your query:
 ```bash
 $ {suggested_cmd}
 ```
-
+{source_banner}
 **Execution Status:** {status_badge} ({cli_res.get('latency_ms', 0)}ms)
 
 ```json
@@ -436,6 +457,13 @@ $ {suggested_cmd}
         if recalled:
             bullets = "\n".join([f"- 🛡️ **[{m['memory_type']}] ({m['category']}):** *{m['content']}*" for m in recalled])
             memory_banner = f"\n#### 🧠 Mem0 Organizational Policies Applied:\n{bullets}\n"
+
+        # Knowledge Base Runbook Citations
+        kb_banner = ""
+        recalled_kb = state.get("recalled_knowledge", [])
+        if recalled_kb:
+            bullets = "\n".join([f"- 📄 **`{k['filename']}`** (*{k['title']}* ➔ `{k['header']}`) — *Relevance: {k['score']:.2f}*" for k in recalled_kb])
+            kb_banner = f"\n#### 📚 Grounded in Knowledge Base Runbooks:\n{bullets}\n"
 
         if intent == "IDLE_WASTE_REMEDIATION":
             idle_res = FinOpsToolRegistry.execute_tool(db, "audit_idle_resources", {}, tenant_id)
@@ -588,6 +616,8 @@ Detected **{len(anomalies)} active billing surges** requiring FinOps attention:
             "user_query": user_query.strip(),
             "intent": "GENERAL",
             "recalled_memories": [],
+            "recalled_knowledge": [],
+            "suggested_command_from_doc": None,
             "executed_tools": [],
             "executed_commands": [],
             "action_proposal": None,
@@ -655,7 +685,8 @@ I have permanently committed this rule to your organization's memory layer. All 
         return {
             "reply": final_state.get("final_reply", "Response synthesized."),
             "tools": tool_names,
-            "thoughts": f"LangGraph StateGraph executed for intent: '{final_state.get('intent')}'. Recalled {len(final_state.get('recalled_memories', []))} Mem0 rules.",
+            "thoughts": f"LangGraph StateGraph executed for intent: '{final_state.get('intent')}'. Recalled {len(final_state.get('recalled_memories', []))} Mem0 rules and {len(final_state.get('recalled_knowledge', []))} knowledge docs.",
             "proposal": final_state.get("action_proposal"),
-            "executed_commands": final_state.get("executed_commands", [])
+            "executed_commands": final_state.get("executed_commands", []),
+            "recalled_knowledge": final_state.get("recalled_knowledge", [])
         }
