@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.models.agent import AgentActionLog
 from app.models.billing import IdleResource
 from app.services.agent_runtime import AgenticFinOpsEngine
+from app.services.memory_service import Mem0Service
 
 router = APIRouter(prefix="/agents", tags=["AWS FinOps Agentic Platform"])
 
@@ -320,3 +321,89 @@ def test_ai_provider(req: AITestRequest) -> Dict[str, Any]:
             return {"status": "ERROR", "provider": "groq", "error": str(e)}
 
     return {"status": "ERROR", "error": f"Provider '{provider}' not implemented for direct test."}
+
+# =========================================================================
+# Mem0 Agent Memory Endpoints
+# =========================================================================
+
+class MemoryCreateRequest(BaseModel):
+    content: str
+    memory_type: str = "FINOPS_RULE"  # FINOPS_RULE, RESOURCE_EXEMPTION, USER_PREFERENCE, ANOMALY_NOTE
+    category: str = "GENERAL"         # EC2, S3, RDS, IDLE_WASTE, BUDGET, GENERAL
+    metadata: Optional[Dict[str, Any]] = None
+
+class MemorySearchRequest(BaseModel):
+    query: str
+    limit: int = 5
+
+@router.get("/memories")
+def list_memories(
+    category: Optional[str] = None,
+    limit: int = 50,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+) -> List[Dict[str, Any]]:
+    """
+    List all persistent FinOps agent memories for the tenant (Mem0 Layer).
+    """
+    return Mem0Service.list_memories(db, tenant_id=tenant_id, category=category, limit=limit)
+
+@router.post("/memories")
+def create_memory(
+    req: MemoryCreateRequest,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Add a new FinOps rule or memory to the Mem0 layer with adaptive vector embedding.
+    """
+    return Mem0Service.add_memory(
+        db=db,
+        tenant_id=tenant_id,
+        content=req.content,
+        memory_type=req.memory_type,
+        category=req.category,
+        metadata=req.metadata
+    )
+
+@router.post("/memories/search")
+def search_memories(
+    req: MemorySearchRequest,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+) -> List[Dict[str, Any]]:
+    """
+    Perform hybrid semantic vector + keyword search over tenant memories.
+    """
+    return Mem0Service.search_memories(
+        db=db,
+        tenant_id=tenant_id,
+        query=req.query,
+        limit=req.limit
+    )
+
+@router.delete("/memories/{memory_id}")
+def delete_memory(
+    memory_id: int,
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Delete a specific memory by ID.
+    """
+    success = Mem0Service.delete_memory(db, tenant_id=tenant_id, memory_id=memory_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"status": "DELETED", "id": memory_id}
+
+@router.post("/memories/clear")
+def clear_memories(
+    tenant_id: str = Depends(get_tenant_id),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    Clear all memories for the tenant.
+    """
+    count = Mem0Service.clear_memories(db, tenant_id=tenant_id)
+    return {"status": "CLEARED", "deleted_count": count}
+

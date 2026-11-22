@@ -21,7 +21,8 @@ import {
   Check,
   RefreshCw,
   Settings,
-  ChevronDown as ChevronDownIcon
+  ChevronDown as ChevronDownIcon,
+  Brain
 } from "lucide-react";
 
 interface AgentChatConsoleProps {
@@ -280,16 +281,30 @@ export function AgentChatConsole({ tenantId = "tenant-acme", onOpenSettings }: A
                       onClick={() => toggleThoughts(m.id)}
                       className="flex items-center justify-between w-full text-indigo-600 hover:text-indigo-700 font-semibold text-[11px] cursor-pointer"
                     >
-                      <span className="flex items-center space-x-1.5">
-                        <Wrench className="w-3.5 h-3.5 text-indigo-500" />
-                        <span>
-                          Executed {m.tools?.length || 0} Autonomous Tool{m.tools?.length === 1 ? "" : "s"}
+                      <span className="flex items-center space-x-1.5 flex-wrap gap-1">
+                        <span className="flex items-center space-x-1">
+                          <Wrench className="w-3.5 h-3.5 text-indigo-500" />
+                          <span>
+                            Executed {m.tools?.length || 0} Autonomous Tool{m.tools?.length === 1 ? "" : "s"}
+                          </span>
                         </span>
+                        {m.tools?.includes("mem0_hybrid_recall") && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 flex items-center space-x-1">
+                            <Brain className="w-2.5 h-2.5 text-indigo-600" />
+                            <span>Mem0 Recalled</span>
+                          </span>
+                        )}
+                        {m.tools?.includes("mem0_save_rule") && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center space-x-1">
+                            <Brain className="w-2.5 h-2.5 text-emerald-600" />
+                            <span>Mem0 Learned</span>
+                          </span>
+                        )}
                       </span>
                       {expandedThoughts[m.id] ? (
-                        <ChevronUp className="w-3.5 h-3.5" />
+                        <ChevronUp className="w-3.5 h-3.5 shrink-0" />
                       ) : (
-                        <ChevronDown className="w-3.5 h-3.5" />
+                        <ChevronDown className="w-3.5 h-3.5 shrink-0" />
                       )}
                     </button>
 

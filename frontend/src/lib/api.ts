@@ -208,4 +208,27 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+
+  // Mem0 Agent Memory Endpoints
+  getAgentMemories: (tenantId: string = "tenant-acme", category?: string) => {
+    const query = category && category !== "ALL" ? `?category=${category}` : "";
+    return fetchJson<any[]>(`/agents/memories${query}`, tenantId);
+  },
+  addAgentMemory: (
+    data: { content: string; memory_type?: string; category?: string; metadata?: any },
+    tenantId: string = "tenant-acme"
+  ) =>
+    fetchJson<any>("/agents/memories", tenantId, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  searchAgentMemories: (query: string, tenantId: string = "tenant-acme") =>
+    fetchJson<any[]>("/agents/memories/search", tenantId, {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    }),
+  deleteAgentMemory: (id: number, tenantId: string = "tenant-acme") =>
+    fetchJson<any>(`/agents/memories/${id}`, tenantId, { method: "DELETE" }),
+  clearAgentMemories: (tenantId: string = "tenant-acme") =>
+    fetchJson<any>("/agents/memories/clear", tenantId, { method: "POST" }),
 };

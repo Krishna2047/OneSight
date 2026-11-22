@@ -11,8 +11,10 @@ from app.core.config import settings
 from app.core.database import Base, engine, SessionLocal
 from app.models.tenant import Tenant, AWSAccount
 from app.models.billing import BillingRecord, CloudProvider
+from app.models.agent import AgentActionLog, AgentMemory
 from app.services.detector import detect_anomalies
 from app.services.agent_runtime import AgenticFinOpsEngine
+from app.services.memory_service import Mem0Service
 from app.services.aws_live_service import AWSLiveCostExplorerService
 from app.api.billing import router as billing_router
 from app.api.anomalies import router as anomalies_router
@@ -142,6 +144,9 @@ async def lifespan(app: FastAPI):
                 db.bulk_save_objects(recs_to_add)
                 db.commit()
                 logger.info(f"Successfully bootstrapped {len(recs_to_add)} real AWS Cost Explorer records.")
+
+        # Seed Mem0 default FinOps memories if needed
+        Mem0Service.seed_if_empty(db, "tenant-acme")
 
         logger.info("OneSight database ready.")
     except Exception as e:

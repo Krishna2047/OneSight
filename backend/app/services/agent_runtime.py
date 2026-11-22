@@ -11,6 +11,7 @@ from app.models.agent import AgentActionLog
 from app.models.tenant import AWSAccount
 from app.core.config import settings
 from app.services.aws_cost_explorer import AWSCostExplorerService
+from app.services.memory_service import Mem0Service
 
 logger = logging.getLogger("onesight.agents")
 
@@ -450,6 +451,36 @@ class AgenticFinOpsEngine:
         ]
 
         # -------------------------------------------------------------------------
+        # Mem0 Layer: Check for Explicit Rule / Memory Directives
+        # -------------------------------------------------------------------------
+        fact_directive = Mem0Service.extract_fact_directive(user_query)
+        if fact_directive:
+            saved_mem = Mem0Service.add_memory(
+                db,
+                tenant_id=tenant_id,
+                content=fact_directive["content"],
+                memory_type=fact_directive["memory_type"],
+                category=fact_directive["category"],
+                metadata=fact_directive["metadata"]
+            )
+            reply = f"""🧠 **FinOps Memory Saved (Mem0)**
+
+- **Type:** `{saved_mem['memory_type']}`
+- **Category:** `{saved_mem['category']}`
+- **Learned Rule:** *"{saved_mem['content']}"*
+- **Embedding Engine:** `{saved_mem['embedding_provider']}`
+
+I have permanently committed this policy to your organization's memory layer. All future cost audits, idle waste scans, and recommendations will respect this rule.
+"""
+            agent_result = {
+                "reply": reply,
+                "tools": ["mem0_save_rule"],
+                "thoughts": f"Recorded FinOps rule via Mem0 engine (provider: {saved_mem['embedding_provider']})."
+            }
+            cls._save_log(db, tenant_id, user_query, thought_steps, ["mem0_save_rule"], agent_result)
+            return agent_result
+
+        # -------------------------------------------------------------------------
         # Quick Check: Clean Conversational Greeting (Prevents Unsolicited Data Dumps)
         # -------------------------------------------------------------------------
         CASUAL_GREETINGS = {
@@ -466,6 +497,14 @@ class AgenticFinOpsEngine:
             }
             cls._save_log(db, tenant_id, user_query, thought_steps, ["conversational_greeting"], agent_result)
             return agent_result
+
+        # -------------------------------------------------------------------------
+        # Mem0 Hybrid Context Recall
+        # -------------------------------------------------------------------------
+        mem_context, relevant_mems = Mem0Service.get_context_for_prompt(db, tenant_id, user_query)
+        if relevant_mems:
+            tools_executed.append("mem0_hybrid_recall")
+            thought_steps.append(f"Mem0 recalled {len(relevant_mems)} relevant organizational rule(s).")
 
         # -------------------------------------------------------------------------
         # Path 1: Live LLM (Groq / Ollama / Gemini / OpenAI)
@@ -497,12 +536,15 @@ You have direct access to live AWS telemetry for the user's organization:
 - Active Cost Anomalies ({anoms.get('count', 0)}): {json.dumps(anoms.get('anomalies', []))}
 - Active Idle Waste Resources ({idle.get('count', 0)}): {json.dumps(idle.get('resources', []))}
 
+{mem_context}
+
 Conversational Guidelines:
 - If the user sends a casual greeting or pleasantry (e.g. "hi", "hello", "how are you"), reply with a brief, friendly 1-2 sentence greeting offering assistance.
 - NEVER dump spend tables, metrics, forecasts, or telemetry dumps in response to a simple greeting or pleasantry.
 - ONLY output detailed spend breakdowns, tables, forecasts, anomalies, or optimization guidance when the user explicitly asks for them.
 - Keep answers concise, direct, and focused on what was asked using GitHub-flavored markdown.
 - Ground every spend or cost claim strictly in the real AWS telemetry provided.
+- Always respect active organizational memories, resource exemptions, and budget policies listed above.
 """
                 llm_res = cls._call_llm_api(system_prompt, user_query)
                 if llm_res:
@@ -558,14 +600,21 @@ What would you like to investigate?
                     f"- **{i['resource_name']}** (`{i['resource_type']}`) in `{i['region']}` ({i['account_name']}): **${i['monthly_waste_cost']:,.2f}/mo**"
                     for i in items
                 ])
+
+                memory_notes = ""
+                exemption_mems = [m for m in relevant_mems if m.get("memory_type") == "RESOURCE_EXEMPTION"]
+                if exemption_mems:
+                    exemption_bullets = "\n".join([f"- 🛡️ **Policy Exemption Applied:** {m['content']}" for m in exemption_mems])
+                    memory_notes = f"\n#### 🧠 Mem0 Organizational Rules Applied:\n{exemption_bullets}\n"
+
                 reply = f"""### 🔍 AWS Idle & Orphaned Resource Audit
 
 We identified **{len(items)} idle AWS assets** wasting **${total_waste:,.2f} per month** (${idle_data.get('total_annualized_waste', 0):,.2f} annualized):
 
 {items_breakdown}
-
+{memory_notes}
 #### ⚡ Recommended Remediation:
-1. **Unattached EBS Volumes**: Create snapshot and delete unattached storage volumes.
+1. **Unattached EBS Volumes**: Create snapshot and delete unattached storage volumes (unless exempted by policy above).
 2. **Orphaned NAT Gateways**: Route internal S3 traffic through free S3 VPC Gateway Endpoints.
 3. **Unassigned Elastic IPs**: Release idle IP allocations.
 
